@@ -1,0 +1,31 @@
+# Environment and Secrets
+.env
+*.env
+!.env.example
+DEFENSE_NOTES.md
+
+# Databases and Local Storage
+*.db
+*.db-journal
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Python & Virtual Environments
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+ENV/
+
+# Testing & Linting
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Operating System
+.DS_Store
+Thumbs.db
