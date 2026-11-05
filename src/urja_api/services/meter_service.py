@@ -1,7 +1,7 @@
 from typing import List, Optional, Tuple
 
 from src.urja_api.client.portal_client import UrjaPortalClient
-from src.urja_api.errors import NotFoundError
+from src.urja_api.errors import NotFoundError, UpstreamTimeoutError, UpstreamUnavailableError
 from src.urja_api.models.common import PaginationMetadata
 from src.urja_api.models.meter import MeterDetail, MeterSummary
 from src.urja_api.parsers.meter_parser import parse_meter_detail_from_html
@@ -66,5 +66,9 @@ class MeterService:
         try:
             html = await self.portal_client.fetch_meter_detail_html(meter_id)
             return parse_meter_detail_from_html(html, meter_id)
-        except Exception:
+        except NotFoundError:
             raise NotFoundError("Meter", meter_id)
+        except (UpstreamUnavailableError, UpstreamTimeoutError):
+            raise
+        except Exception as e:
+            raise UpstreamUnavailableError(f"Failed to fetch meter details from portal: {e}")

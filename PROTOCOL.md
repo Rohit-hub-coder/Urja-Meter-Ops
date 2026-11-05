@@ -126,6 +126,18 @@
   - Concurrency is throttled to 2 concurrent in-flight requests maximum (`asyncio.Semaphore(2)`).
   - Manual sync invocations (`POST /api/v1/sync`) enforce a mandatory 60-second cooldown period, preventing repeated hits to the portal.
 
+### 3.1.2 Bulk Export vs. Fallback Paged Crawl Completeness Comparison
+If `/portal/export` is unavailable or returns 401/403, the synchronization service falls back to paginating `/portal/meters/search` and merging with `/portal/dts`. The completeness tradeoffs between the two discovery methods are quantified below:
+
+| Feature Dimension | Bulk Path (`/portal/export`) | Fallback Paged Crawl (`/portal/meters/search` + `/portal/dts`) | Completeness & Parity Analysis |
+|---|---|---|---|
+| **Network Cost** | 1 request (~250ms) | 23 requests (21 pages search + 2 pages DTs, ~7-8s) | 23× more round-trips; higher latency |
+| **Meter Population** | 403 / 403 meters (100%) | 403 / 403 meters (100%) | **Full parity**: all 403 meters discovered |
+| **Master Identity** | `meterId`, `serialNo`, `make`, `dtCode`, `phaseType`, `installStatus` | `meterId`, `serialNo`, `make`, `dtCode`, `phaseType`, `installStatus` | **Exact parity** across all master attributes |
+| **Firmware & Install Type** | `build` ("legacy", "v2"), `installType` ("Whole Current", "CT Operated") | Omitted upstream (`null`) | **Gap**: requires individual `/meters/{id}` HTML detail scrapes |
+| **Geo Coordinates** | `latitude`, `longitude` (WGS 84 float for all 403 meters) | Omitted upstream (`null`) | **Gap**: requires 403 separate `/portal/meters/{id}/geo` calls |
+| **Hierarchy Topology** | Complete 7-tier nested tree (`zone` down to `dt`) | `dtCode` provided; resolves to DT name/feeder via `/portal/dts` | **Partial**: top 5 tiers (`zone` through `substation`) absent unless inferred from peer DTs |
+
 ### 3.2 Meters Search: `GET /portal/meters/search`
 * **Query Parameters**:
   * `q`: Search string (searches substring of `meterId` or `serialNo`).
@@ -175,7 +187,7 @@ An automated rate-limited audit (`scripts/telemetry_census.py`, concurrency 2, d
   * **Build Version Correlation**: Exactly 9 daily meters in the sample are `build_version: "v2"` and 9 are `build_version: "legacy"` (the same ~50/50 split observed in 30-minute meters). There is **no observed correlation** between daily cadence and firmware `build_version`.
   * **Manufacturer Make**: Daily meters appear across all 5 makes (Allied: 5, Secure: 4, HPL: 4, L&T: 3, Genus: 2).
   * **Install Status**: 16 of the 18 daily meters (88.9%) are marked `Decommissioned` (10) or `Faulty` (6); only 2 are `Installed`.
-  * *Refuted Domain Hypothesis [ASSUMED -> REFUTED]*: The initial hypothesis that daily-cadence meters represent older hardware or "legacy billing meters" is **not supported by data**, since half of the daily-cadence meters run `build_version: "v2"`. Instead, daily cadence may reflect meters placed into daily-snapshot mode upon entering Faulty/Decommissioned status, or meter profiles with lower reporting tiers.
+  * *Domain Hypothesis [ASSUMED - NOT SUPPORTED BY DATA]*: The initial hypothesis that daily-cadence meters represent older hardware or "legacy billing meters" is **not supported by data**, since half of the daily-cadence meters run `build_version: "v2"`. Instead, daily cadence may reflect meters placed into daily-snapshot mode upon entering Faulty/Decommissioned status, or meter profiles with lower reporting tiers.
   * *Decommissioned meter data retention [ASSUMED]*: Decommissioning reflects an administrative status flag in the utility's outage/inventory database; historical telemetry is retained in the historical time-series database.
 
 ---

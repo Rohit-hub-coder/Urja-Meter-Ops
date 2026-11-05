@@ -149,8 +149,8 @@ The service is now running at `http://localhost:8000`:
 
 ### Sample Request & Response
 
-#### 1. Geospatial Radius Search
-`GET /api/v1/meters?near_lat=26.9124&near_lng=75.7873&radius_km=3.0&limit=2`
+#### 1. Geospatial Radius Search (List View)
+`GET /api/v1/meters?near_lat=26.9124&near_lng=75.7873&radius_km=3.0&limit=1`
 
 ```json
 {
@@ -177,6 +177,34 @@ The service is now running at `http://localhost:8000`:
           "raw_name": "Jaipur Zone 3",
           "is_inferred": false
         },
+        "circle": {
+          "code": "C-03",
+          "name": "Circle 3",
+          "raw_code": "C-03",
+          "raw_name": "Circle 3",
+          "is_inferred": false
+        },
+        "division": {
+          "code": "D-09",
+          "name": "Division 9",
+          "raw_code": "D-09",
+          "raw_name": "Division 9",
+          "is_inferred": false
+        },
+        "subdivision": {
+          "code": "SD-09",
+          "name": "Subdivision 9",
+          "raw_code": "SD-09",
+          "raw_name": "Subdivision 9",
+          "is_inferred": false
+        },
+        "substation": {
+          "code": "SS-09",
+          "name": "Substation 9",
+          "raw_code": "SS-09",
+          "raw_name": "Substation 9",
+          "is_inferred": false
+        },
         "feeder": {
           "code": "F-009",
           "name": "Feeder 9",
@@ -193,52 +221,13 @@ The service is now running at `http://localhost:8000`:
         }
       },
       "data_quality_warnings": []
-    },
-    {
-      "meter_id": "J100238",
-      "serial_number": "L&96401",
-      "make": "Secure",
-      "phase_type": "three",
-      "install_status": "Installed",
-      "install_type": "Whole Current",
-      "build_version": "v2",
-      "dt_code": "DT-039",
-      "location": {
-        "latitude": 26.90296465411559,
-        "longitude": 75.7785314368994,
-        "distance_km": 1.363
-      },
-      "hierarchy": {
-        "zone": {
-          "code": "Z-03",
-          "name": "Jaipur Zone 3",
-          "raw_code": "Z-03",
-          "raw_name": "Jaipur Zone 3",
-          "is_inferred": false
-        },
-        "feeder": {
-          "code": "F-011",
-          "name": "Feeder 11",
-          "raw_code": "F-011",
-          "raw_name": "Feeder 11",
-          "is_inferred": false
-        },
-        "dt": {
-          "code": "DT-039",
-          "name": "Sikar Road DT 39",
-          "raw_code": "DT-039",
-          "raw_name": "Sikar Road DT 39",
-          "is_inferred": false
-        }
-      },
-      "data_quality_warnings": []
     }
   ],
   "pagination": {
     "total_records": 16,
     "page": 1,
-    "limit": 2,
-    "total_pages": 8,
+    "limit": 1,
+    "total_pages": 16,
     "has_next": true,
     "has_prev": false
   },
@@ -246,7 +235,81 @@ The service is now running at `http://localhost:8000`:
 }
 ```
 
-#### 2. RFC 7807 Error Response
+#### 2. Meter Detail View
+`GET /api/v1/meters/J100368`
+
+```json
+{
+  "meter_id": "J100368",
+  "serial_number": "L&37528",
+  "make": "HPL",
+  "phase_type": "three",
+  "install_status": "Faulty",
+  "install_type": "Whole Current",
+  "build_version": "legacy",
+  "dt_code": "DT-009",
+  "location": {
+    "latitude": 26.916888334176132,
+    "longitude": 75.78477906508856,
+    "distance_km": null
+  },
+  "hierarchy": {
+    "zone": {
+      "code": "Z-03",
+      "name": "Jaipur Zone 3",
+      "raw_code": "Z-03",
+      "raw_name": "Jaipur Zone 3",
+      "is_inferred": false
+    },
+    "circle": {
+      "code": "C-03",
+      "name": "Circle 3",
+      "raw_code": "C-03",
+      "raw_name": "Circle 3",
+      "is_inferred": false
+    },
+    "division": {
+      "code": "D-09",
+      "name": "Division 9",
+      "raw_code": "D-09",
+      "raw_name": "Division 9",
+      "is_inferred": false
+    },
+    "subdivision": {
+      "code": "SD-09",
+      "name": "Subdivision 9",
+      "raw_code": "SD-09",
+      "raw_name": "Subdivision 9",
+      "is_inferred": false
+    },
+    "substation": {
+      "code": "SS-09",
+      "name": "Substation 9",
+      "raw_code": "SS-09",
+      "raw_name": "Substation 9",
+      "is_inferred": false
+    },
+    "feeder": {
+      "code": "F-009",
+      "name": "Feeder 9",
+      "raw_code": "F-009",
+      "raw_name": "Feeder 9",
+      "is_inferred": false
+    },
+    "dt": {
+      "code": "DT-009",
+      "name": "Sikar Road DT 9",
+      "raw_code": "DT-009",
+      "raw_name": "Sikar Road DT 9",
+      "is_inferred": false
+    }
+  },
+  "data_quality_warnings": [],
+  "nameplate_attributes": {}
+}
+```
+
+#### 3. RFC 7807 Error Response
 `GET /api/v1/meters/UNKNOWN_METER`
 
 ```json
@@ -308,7 +371,7 @@ make test-live
 | Category | Decision / Assumption | Justification |
 |---|---|---|
 | **Bulk Path** | Use HMAC-signed `/portal/export` endpoint discovered in client chunks | Synchronizes all 403 meters in 1 request (~250ms) vs. 21+ sequential paged scrapes. |
-| **Export Resilience** | Secret invalidation retry + automatic fallback to paged search crawl | If `/portal/export` returns 401/403, the client invalidates the cached secret and retries once; if persistent failure occurs, it falls back to paginating `/portal/meters/search`. |
+| **Export Resilience** | Secret invalidation retry + automatic fallback to paged search crawl | If `/portal/export` returns 401/403, the client invalidates the cached secret and retries once; if persistent failure occurs, it falls back to paginating `/portal/meters/search`. The fallback captures 100% of meters (403/403) and master fields, but has partial hierarchy (DT only) and lacks geo-coordinates without individual lookups. See [PROTOCOL.md §3.1.2](PROTOCOL.md). |
 | **Hierarchy Tiers** | Full 7-tier topology on both list and detail views | Both `MeterSummary` (list) and `MeterDetail` (detail) expose all 7 tiers (`zone`, `circle`, `division`, `subdivision`, `substation`, `feeder`, `dt`). This prevents N+1 queries by allowing API consumers to group, aggregate, or slice search results by substation or feeder without needing individual detail calls. The detail view additionally returns extended `nameplate_attributes`. |
 | **Data Repair** | Inferred missing hierarchy codes/names from peer nodes with `data_quality_warnings` | Prevents broken tree visualization while preserving full auditability of upstream anomalies. |
 | **Storage** | SQLite (`aiosqlite`) with bounding-box prefilter | Embedded, zero external dependencies, sub-millisecond query latency for regional utility datasets. |

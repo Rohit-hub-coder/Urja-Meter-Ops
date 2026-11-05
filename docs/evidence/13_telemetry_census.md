@@ -30,7 +30,7 @@ Stratification guarantees full coverage across all 30 combinations of:
    - **Build Version Correlation**: Exactly 9 daily meters are `build_version: "v2"` and 9 are `build_version: "legacy"` (identical 50/50 split to the 30-minute sample which is 53% legacy / 47% v2). There is **no correlation** between daily cadence and `build_version`.
    - **Manufacturer Make**: Daily meters occur across all 5 manufacturers (Allied: 5, Secure: 4, HPL: 4, L&T: 3, Genus: 2).
    - **Install Status**: 16 of the 18 daily meters (88.9%) are marked `Decommissioned` (10) or `Faulty` (6); only 2 are `Installed`.
-   - *Refuted Hypothesis [ASSUMED -> REFUTED]*: The initial hypothesis that daily-cadence meters represent older hardware or "legacy billing meters" is **not supported by empirical data**, since half of the daily-cadence meters run firmware `build_version: "v2"`. Instead, daily cadence may reflect meters placed into daily-snapshot mode upon entering Faulty/Decommissioned status, or meter profiles with lower reporting tiers.
+   - *Domain Hypothesis [ASSUMED - NOT SUPPORTED BY DATA]*: The initial hypothesis that daily-cadence meters represent older hardware or "legacy billing meters" is **not supported by empirical data**, since half of the daily-cadence meters run firmware `build_version: "v2"`. Instead, daily cadence may reflect meters placed into daily-snapshot mode upon entering Faulty/Decommissioned status, or meter profiles with lower reporting tiers.
 
 3. **Negative Deltas / Counter Resets [OBSERVED in Sample]**:
    - Exactly 0 negative deltas observed across the 50-meter sample. Cumulative kWh/kVAh registers are strictly non-decreasing across all observed intervals.

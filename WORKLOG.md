@@ -91,3 +91,24 @@ This worklog records raw, chronological engineering decisions, hypotheses, inves
   - **Meters Master & Hierarchy**: Static utility topological data. TTL = **1 hour**, Stale-While-Revalidate (SWR) window = 24 hours.
   - **Energy / Consumption**: Half-hourly telemetry data. TTL = **15 minutes** (half the 30-minute sampling interval).
   - **Manual Refresh**: `POST /api/v1/refresh` with a 60-second cooldown rate limit to prevent upstream flooding.
+
+---
+
+## 2026-11-05 12:15 - Final Verification Pass & Stratified Telemetry Census
+- **Hypothesis**: Active meters have 30-minute cadences, while meters with 8 daily records represent older legacy billing meters.
+- **Empirical Execution**: Ran rate-limited audit across 50 stratified meters (`scripts/telemetry_census.py`, concurrency 2, delay 250ms) spanning all 30 (make × phase × status) strata.
+- **Findings**:
+  - Exactly 32 meters had 30-min cadence (337 readings), 18 meters had daily midnight snapshot cadence (8 readings).
+  - 0 negative counter regressions, 0 timestamp gaps, 0 duplicate timestamps.
+  - 100% of decommissioned meters retain historical telemetry.
+- **Mistake & Course Correction**:
+  - We hypothesized daily cadence correlated with older firmware or "legacy billing meters". When checking the 18 daily meters against the database, exactly 9 were `build_version: "v2"` and 9 were `build_version: "legacy"`.
+  - The hypothesis was **not supported by data**. Reworded `PROTOCOL.md` and census docs to label this hypothesis as unverified / refuted by data.
+
+---
+
+## 2026-11-05 12:35 - Upstream Failure Handling & Export Resilience Failover
+- **Problem**: When the portal is unreachable and the local cache is empty, querying `GET /api/v1/meters/{id}` caught a generic `Exception` and converted it to `NotFoundError` (404), incorrectly telling the client the meter didn't exist instead of reporting upstream unavailability.
+- **Fix**: Caught `(UpstreamUnavailableError, UpstreamTimeoutError)` explicitly in `MeterService.get_meter` and re-raised them so RFC 7807 503 is returned. Verified with live test.
+- **Export Resilience**: Added automatic signing secret invalidation retry on 401/403 in `UrjaPortalClient.fetch_meters_bulk`. If persistent failure occurs, `SyncService` falls back to paginating `/portal/meters/search` and merging with `/portal/dts`. Added respx tests covering both failover paths.
+- **Hierarchy Representation**: Confirmed and documented that both list and detail views provide all 7 network topology tiers (`zone` through `dt`) to allow consumer-side grouping without N+1 requests. Detail view adds `nameplate_attributes`.

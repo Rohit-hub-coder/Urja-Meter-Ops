@@ -37,19 +37,25 @@
 
 ---
 
-### 4. A Real Mistake Made & Corrected
+### 4. Real Mistakes Made & Corrected
 1. **Secret Scanning False Positive in Template**:
    - When creating `.env.example`, I initially included `contact=operator@[portal_domain]` in the User-Agent placeholder. The pre-commit secret scan immediately caught the portal username. Even though it was only an example file, I sanitized it to `operator@example.com` to guarantee 100% clean secret scanning across all git history.
 2. **Premature Assumption About Serial Number Prefixes**:
    - During live smoke test authoring, I asserted `serial_number.startswith("SE")` based on the first meter `J100000` (HPL make). The live test failed on `J100001` with `AssertionError: 'GE84132'.startswith('SE')` because Genus meters use the `GE` prefix. I corrected the invariant to validate format cleanliness rather than hardcoding a single manufacturer's prefix.
+3. **Empty Cache + Unreachable Portal Error Masking**:
+   - When the local database was empty and the upstream portal was unreachable, querying `GET /api/v1/meters/{id}` caught a generic `Exception` and converted it to `NotFoundError` (404), incorrectly claiming the meter did not exist. I corrected `MeterService.get_meter` to explicitly preserve and re-raise `UpstreamUnavailableError` and `UpstreamTimeoutError`, correctly returning an RFC 7807 503 error.
+4. **Unverified Hypothesis on Daily-Cadence Meters**:
+   - I initially hypothesized that daily-cadence meters represented older hardware or "legacy billing meters". When correlating against the 403-meter index, exactly 9 of the 18 sampled daily meters were `build_version: "v2"` and 9 were `build_version: "legacy"`. The hypothesis was not supported by data, and I reworded the documentation to honestly report this finding.
 
 ---
 
 ### 5. What I'd Criticise in My Own Submission
-1. **Consumption Granularity Agnosticism**:
-   - The upstream portal only provides half-hourly (30-min) telemetry intervals. Although our API cleanly parses and summarizes these intervals, custom downsampling (e.g. hourly or daily bucketing) is currently done client-side or on the full window rather than parameterized via a `granularity=daily` aggregation engine.
-2. **Synchronous Export Signature Rotation**:
-   - The signing secret from `/portal/keys` is cached for 30 minutes. If the portal rotates its key without notice, a request could fail with 401/403 before our cache expires. Adding an automatic invalidation and retry on signature failure would eliminate this rare edge case.
+1. **In-Memory Single-Worker Concurrency Locks**:
+   - The single-flight mutex in `SessionManager` uses an in-process `asyncio.Lock()`. In a multi-worker production deployment (`uvicorn --workers 4`), each worker process manages its own independent session, potentially making duplicate `/login` calls. A shared Redis distributed lock would be required for horizontal scaling.
+2. **Upstream Telemetry Sub-Day Filtering Waste**:
+   - Upstream `/portal/meters/{id}/energy` ignores sub-day timestamps in `from`/`to` parameters. When a client queries a 2-hour window, our service fetches the entire day's records and filters in Python, wasting upstream network bandwidth.
+3. **Consumption Granularity Agnosticism**:
+   - The API currently parses and summarizes half-hourly and daily telemetry as delivered by the portal. Parameterized downsampling (e.g. `granularity=daily` or `hourly` aggregation buckets) would be a valuable addition for analytics.
 
 ---
 
