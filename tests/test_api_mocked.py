@@ -331,3 +331,149 @@ async def test_export_fallback_to_paged_crawl_on_persistent_403(tmp_path, monkey
     assert meta.total_records == 1
     assert meters[0].meter_id == "J999001"
     assert meters[0].make == "Genus"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_lifespan_startup_sync_on_empty_db(tmp_path, monkeypatch):
+    """Tests that app lifespan auto-seeds SQLite cache if DB is empty on startup."""
+    from src.urja_api.main import lifespan
+
+    empty_db = tmp_path / "empty_startup.db"
+    monkeypatch.setattr(settings, "database_path", str(empty_db))
+    monkeypatch.setattr(settings, "portal_username", "mock_user@example.local")
+    monkeypatch.setattr(settings, "portal_password", "mock_password_123")
+
+    with open("tests/fixtures/portal_export.json") as f:
+        export_data = json.load(f)
+    with open("tests/fixtures/portal_dts_page1.json") as f:
+        dts_data = json.load(f)
+
+    # Mock login, export, dts, keys
+    respx.post(f"{settings.portal_base_url}/login").respond(
+        status_code=200, headers={"set-cookie": "__Secure-better-auth.session_token=test_tok; Path=/"}
+    )
+    respx.get(f"{settings.portal_base_url}/portal/keys").respond(
+        status_code=200, json={"data": {"signingSecret": "secret_123"}}
+    )
+    respx.get(f"{settings.portal_base_url}/portal/export").respond(status_code=200, json=export_data)
+    respx.get(f"{settings.portal_base_url}/portal/dts").respond(status_code=200, json=dts_data)
+
+    async with lifespan(app):
+        repo = MeterRepository()
+        count = await repo.get_total_meters_count()
+        assert count == 403
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_sync_cooldown_rate_limit_and_retry_after():
+    """Tests that manual sync without force=true during cooldown returns 429 with Retry-After header."""
+    from src.urja_api.api.dependencies import get_sync_service
+
+    sync_service = get_sync_service()
+    sync_service._last_sync_time = 0.0
+
+    with open("tests/fixtures/portal_export.json") as f:
+        export_data = json.load(f)
+    with open("tests/fixtures/portal_dts_page1.json") as f:
+        dts_data = json.load(f)
+
+    respx.post(f"{settings.portal_base_url}/login").respond(
+        status_code=200, headers={"set-cookie": "__Secure-better-auth.session_token=test_tok; Path=/"}
+    )
+    respx.get(f"{settings.portal_base_url}/portal/keys").respond(
+        status_code=200, json={"data": {"signingSecret": "secret_123"}}
+    )
+    respx.get(f"{settings.portal_base_url}/portal/export").respond(status_code=200, json=export_data)
+    respx.get(f"{settings.portal_base_url}/portal/dts").respond(status_code=200, json=dts_data)
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        # First sync succeeds
+        r1 = await client.post("/api/v1/sync?force=true")
+        assert r1.status_code == 200
+
+        # Immediate second sync without force triggers 429
+        r2 = await client.post("/api/v1/sync")
+        assert r2.status_code == 429
+        assert r2.headers.get("content-type") == "application/problem+json"
+        assert "Retry-After" in r2.headers
+        retry_after = int(r2.headers["Retry-After"])
+        assert 0 < retry_after <= settings.sync_cooldown_sec
+        body = r2.json()
+        assert body["code"] == "RATE_LIMIT_EXCEEDED"
+        assert body["status"] == 429
+
+
+@pytest.mark.asyncio
+async def test_get_ui_and_vendored_static_assets():
+    """Tests that Web Console /ui and vendored static assets serve 200 OK offline."""
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        # Root and /ui serve HTML
+        for path in ["/", "/ui"]:
+            res = await client.get(path)
+            assert res.status_code == 200
+            assert "text/html" in res.headers["content-type"]
+            assert "Urja Meter Ops" in res.text
+
+        # Vendored assets exist and serve 200
+        for asset in ["leaflet.css", "leaflet.js", "chart.umd.js", "tailwindcss.js"]:
+            res = await client.get(f"/static/vendor/{asset}")
+            assert res.status_code == 200
+            assert len(res.content) > 1000
+
+
+@pytest.mark.asyncio
+async def test_pagination_bounds_validation():
+    """Tests that out-of-bounds pagination parameters return 422 ProblemDetails."""
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        # page < 1
+        r_page = await client.get("/api/v1/meters?page=0")
+        assert r_page.status_code == 422
+        assert r_page.headers.get("content-type") == "application/problem+json"
+        p_page = r_page.json()
+        assert p_page["code"] == "VALIDATION_ERROR"
+        assert p_page["status"] == 422
+
+        # limit < 1
+        r_lim_low = await client.get("/api/v1/meters?limit=0")
+        assert r_lim_low.status_code == 422
+        assert r_lim_low.headers.get("content-type") == "application/problem+json"
+
+        # limit > 200
+        r_lim_high = await client.get("/api/v1/meters?limit=201")
+        assert r_lim_high.status_code == 422
+        assert r_lim_high.headers.get("content-type") == "application/problem+json"
+
+
+@pytest.mark.asyncio
+async def test_error_consistency_rfc7807_and_codes():
+    """Tests consistent RFC 7807 problem details across 404, 405, and 422 error conditions."""
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        # 1. Unknown route (404)
+        r_404 = await client.get("/api/v1/nonexistent/route")
+        assert r_404.status_code == 404
+        assert r_404.headers.get("content-type") == "application/problem+json"
+        p_404 = r_404.json()
+        assert p_404["code"] == "NOT_FOUND"
+        assert p_404["status"] == 404
+
+        # 2. Method not allowed (405)
+        r_405 = await client.post("/api/v1/meters")
+        assert r_405.status_code == 405
+        assert r_405.headers.get("content-type") == "application/problem+json"
+        p_405 = r_405.json()
+        assert p_405["code"] == "METHOD_NOT_ALLOWED"
+        assert p_405["status"] == 405
+
+        # 3. Invalid date range from_date > to_date (422)
+        r_date = await client.get("/api/v1/meters/J100000/consumption?from_date=2026-03-25&to_date=2026-03-10")
+        assert r_date.status_code == 422
+        assert r_date.headers.get("content-type") == "application/problem+json"
+        p_date = r_date.json()
+        assert p_date["code"] == "INVALID_DATE_RANGE"
+        assert p_date["status"] == 422

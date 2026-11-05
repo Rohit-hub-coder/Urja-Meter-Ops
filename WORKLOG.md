@@ -1,4 +1,5 @@
 # Engineering Worklog: Urja Meter Ops API Service
+**Author**: Rohit Kumar (Roll No: 23/SE/129, Delhi Technological University)
 
 This worklog records raw, chronological engineering decisions, hypotheses, investigation findings, mistakes, dead ends, and verified facts throughout the project.
 
@@ -112,3 +113,17 @@ This worklog records raw, chronological engineering decisions, hypotheses, inves
 - **Fix**: Caught `(UpstreamUnavailableError, UpstreamTimeoutError)` explicitly in `MeterService.get_meter` and re-raised them so RFC 7807 503 is returned. Verified with live test.
 - **Export Resilience**: Added automatic signing secret invalidation retry on 401/403 in `UrjaPortalClient.fetch_meters_bulk`. If persistent failure occurs, `SyncService` falls back to paginating `/portal/meters/search` and merging with `/portal/dts`. Added respx tests covering both failover paths.
 - **Hierarchy Representation**: Confirmed and documented that both list and detail views provide all 7 network topology tiers (`zone` through `dt`) to allow consumer-side grouping without N+1 requests. Detail view adds `nameplate_attributes`.
+
+## Phase 5: Final Verification & Polish (Complete)
+- **Counter-Reset Handling**: Aligned code, tests, and documentation to set `interval_active_energy_kwh = None` with a structured `DataQualityWarning` on negative counter regressions.
+- **Doc-vs-Code Audit**: Audited 18 concrete claims across README, PROTOCOL, and DEFENSE_NOTES. Corrected rate delay discrepancy from 300ms to 200ms (`0.2s`), perfectly matching `src/urja_api/config.py:22` and `portal_client.py:56`.
+- **User-Agent Standard**: Standardized default User-Agent across `config.py`, `.env.example`, and `.env` to `UrjaMeterOpsApi/1.0 (take-home candidate; https://github.com/<GITHUB_USERNAME>/<REPO_NAME>)`.
+- **AI Disclosure & Reflection**: Authored first-person engineering reflection in `REFLECTION.md` detailing tool use (Antigravity with `<MODEL NAME>` + Claude in separate unlinked chat), human decisions, verified mistakes, and `[USER TO CONFIRM]` markers.
+- **Web UI Offline Vendoring**: Vendored Leaflet (JS, CSS, images) and Chart.js locally into `src/urja_api/web/static/vendor/` and mounted `/static`. Documented that map background tiles require internet while UI logic and charts run offline.
+- **Multi-Python Verification**: Verified full test suite execution on Python 3.11 (`cpython-3.11.16`) and Python 3.12 (`cpython-3.12.14`) via `uv`.
+- **Fresh Clone Resilience**: Tested application startup and endpoint querying without `.env` or SQLite database. Verified clean RFC 7807 ProblemDetails responses without stack traces.
+- **Hierarchy Integrity Audit**: Built and executed automated census (`scripts/audit_hierarchy_integrity.py`), generating `docs/evidence/14_hierarchy_integrity.md`. Discovered dual naming on `DT-007` (`Sanganer DT 7` vs `Old Malviya Nagar Xfmr` on meters `J100400`-`J100402`).
+- **Error Consistency & OpenAPI**: Registered `StarletteHTTPException` handler in `main.py` ensuring 404 and 405 return `application/problem+json`. Attached `ProblemDetails` schema to OpenAPI routes and regenerated `openapi.json`.
+- **Test Suite Expansion**: Added unit tests for startup sync lifespan, 429 sync cooldown with `Retry-After`, `/ui` static assets, pagination boundary validation, and error consistency. Test suite now contains 31 passing offline tests with 89% statement coverage.
+- **PII & Privacy Audit**: Audited documentation and fixtures; verified zero customer names, zero phone numbers, and zero personal credentials exposed in repo. Documented findings in `PROTOCOL.md §6`.
+- **CI Workflow**: Added `.github/workflows/ci.yml` (25 lines) testing Python 3.11 and 3.12 matrices with lint, format, and coverage checks without requiring repository secrets.

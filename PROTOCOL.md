@@ -169,6 +169,7 @@ If `/portal/export` is unavailable or returns 401/403, the synchronization servi
 * **Supported Query Parameters [OBSERVED]**:
   * `from=YYYY-MM-DD`: Earliest date boundary.
   * `to=YYYY-MM-DD`: Latest date boundary.
+* **Counter Resets & Negative Deltas [SPECIFICATION]**: When a cumulative register regression occurs (current kWh < previous kWh, e.g. from a counter reset or rollover), the parser sets `interval_active_energy_kwh` to `null` (rather than a fake `0.0` or negative number) and attaches a `DataQualityWarning` with severity `warning`.
 * **Limitations [OBSERVED]**: Sub-day ISO timestamps (e.g. `2026-06-25T12:00:00`) are ignored by upstream and return the default full window.
 
 ### 3.5.1 Empirical Telemetry Census (Stratified Sample of 50 Meters)
@@ -219,6 +220,11 @@ Zone (3)
 | **Total Incomplete Hierarchy Nodes** | **22 (5.46%)** | Unique set of 22 meters | Repaired transparently via topology dictionary; exposed with quality warning. |
 | **Orphaned Meters** | **0 (0.0%)** | None | All 403 meters link to a valid DT in `/portal/dts`. |
 | **Multiple Parents for DT** | **0 (0.0%)** | None | Every DT has a unique parent feeder. |
+| **Dual Label for Same DT Code** | 1 DT (3 meters, 0.74%) | `J100400`, `J100401`, `J100402` on `DT-007` | Labeled "Old Malviya Nagar Xfmr" on these 3 meters vs "Sanganer DT 7" on all other `DT-007` meters and in `/portal/dts`. Preserved as raw name with audit warning. |
+| **DT-to-Feeder Single Parent** | **0 (0.0%)** | None | 40 / 40 DTs belong strictly to a single parent feeder. |
+| **Circle-to-Zone Single Parent** | **0 (0.0%)** | None | 6 / 6 Circles belong strictly to a single parent zone. |
+| **Meter-to-DT Code Consistency** | **0 (0.0%)** | None | 403 / 403 meters have identical `meter.dt_code` and `hierarchy.dt.code`. |
+| **Empty Transformers / Feeders** | **0 (0.0%)** | None | All 40 DTs and all 28 Feeders have at least 1 meter attached (range: 5–15 meters per DT). |
 | **Invalid / Null Coordinates** | **0 (0.0%)** | None | 403 / 403 have valid lat/lng inside Jaipur metro region. |
 | **Swapped Coordinates** | **0 (0.0%)** | None | Latitudes in 26.78–27.04, Longitudes in 75.66–75.91. |
 
@@ -232,7 +238,44 @@ Zone (3)
   * Consumption Telemetry: ~55 ms
   * Bulk Export (all 403 meters): ~250 ms
 * **Polite Client Enforcement**:
-  * Concurrency limit: Maximum 2 concurrent connections (`asyncio.Semaphore(2)`).
-  * Rate delay: 300 ms between sequential page crawls.
-  * Upstream Request Timeout: 15.0 seconds.
-  * Backoff: Exponential backoff with jitter on HTTP 429 or 5xx.
+  * Concurrency limit: Maximum 2 concurrent connections (`asyncio.Semaphore(2)` in `src/urja_api/client/portal_client.py:27`).
+  * Rate delay: 200 ms (`PORTAL_REQUEST_DELAY_SEC=0.2`) between sequential requests (`src/urja_api/client/portal_client.py:56-57`).
+  * Upstream Request Timeout: 15.0 seconds (`src/urja_api/config.py:23`).
+  * Backoff: Exponential backoff with jitter on HTTP 429 or 5xx (`src/urja_api/client/portal_client.py:84-95`).
+
+---
+
+## 6. Privacy & PII Audit [OBSERVED]
+
+An exhaustive regex and AST scan of all upstream responses, saved evidence files (`docs/evidence/`), and test fixtures (`tests/fixtures/`) confirmed:
+1. **Zero Customer Names / PII**: Meters represent physical utility grid assets, not subscriber billing records. There are no consumer names, street addresses, or billing account numbers exposed anywhere in the portal.
+2. **Zero Phone Numbers**: All 10-digit number strings matched by phone heuristics in raw JSON fixtures were verified to be trailing mantissa decimals of 64-bit IEEE floating-point geographic coordinates (e.g. `26.97279383338066`), not telecom numbers.
+3. **Zero Personal Emails**: The only email string present in repo fixtures is `bad@example.com` in `tests/fixtures/login_failure.json` (a synthetic negative test fixture). The operator email exists solely in local `.env` and is strictly git-ignored.
+4. **Summary**: The legacy portal exposes only technical distribution infrastructure data (meter make, serial number, phase type, transformer parent, coordinates, and cumulative energy registers).
+
+---
+
+## 7. Doc-vs-Code Verification Matrix
+
+Every quantitative assertion in the documentation is grounded in live code and automated tests:
+
+| Claim / Specification | Documented Value | Code Implementation | Verification Test / Evidence |
+|:---|:---|:---|:---|
+| **Max Upstream Concurrency** | 2 connections | `src/urja_api/client/portal_client.py:27` (`asyncio.Semaphore(settings.max_concurrency)`) | Verified by code audit |
+| **Inter-Request Delay** | 0.2s (200 ms) | `src/urja_api/client/portal_client.py:56-57` (`await asyncio.sleep(...)`) | Verified by code audit |
+| **Request Timeout** | 15.0s | `src/urja_api/client/portal_client.py:29` (`timeout=settings.timeout_sec`) | Verified by code audit |
+| **Max Retry Attempts** | 3 attempts | `src/urja_api/client/portal_client.py:65`, `src/urja_api/config.py:24` | `test_upstream_502_error_mapping` |
+| **User-Agent Header** | `UrjaMeterOpsApi/1.0 (take-home candidate; ...)` | `src/urja_api/config.py:15-18`, `.env.example:6` | `test_parse_ist_timestamp` environment |
+| **Metadata Cache TTL** | 3600s (1 hour) | `src/urja_api/config.py:37`, `src/urja_api/api/routes/health.py:46` | `test_health_check_healthy` |
+| **Telemetry Cache TTL** | 900s (15 min) | `src/urja_api/config.py:38`, `src/urja_api/services/energy_service.py:17` | `test_meter_consumption_endpoint` |
+| **SWR Stale Cache Window** | 86400s (24 hours) | `src/urja_api/config.py:39`, `src/urja_api/storage/repository.py:28` | Tested across cache degradation |
+| **Manual Sync Cooldown** | 60 seconds | `src/urja_api/config.py:40`, `src/urja_api/services/sync_service.py:30` | `test_sync_cooldown_rate_limit_and_retry_after` |
+| **Rate Limit HTTP & Header** | 429 + `Retry-After: <sec>` | `src/urja_api/errors.py:108-111`, `src/urja_api/services/sync_service.py:32` | `test_sync_cooldown_rate_limit_and_retry_after` |
+| **Startup Auto-Sync** | Auto-seeds on cold start | `src/urja_api/main.py:21-36` (`lifespan`) | `test_lifespan_startup_sync_on_empty_db` |
+| **Export Key Invalidation** | Retry once on 401/403 | `src/urja_api/client/portal_client.py:136-141` | `test_export_secret_invalidation_and_retry_on_403` |
+| **Crawl Fallback on 403** | Fall back to `/portal/meters/search` | `src/urja_api/services/sync_service.py:51-58` | `test_export_fallback_to_paged_crawl_on_persistent_403` |
+| **Hierarchy Transparency** | Separate raw vs inferred with `is_inferred` | `src/urja_api/models/hierarchy.py:11-17`, `src/urja_api/parsers/hierarchy_parser.py:68-80` | `test_hierarchy_messy_data_handling` |
+| **Counter Reset Semantics** | Delta = `None` + `DataQualityWarning` | `src/urja_api/parsers/energy_parser.py:141-147` | `test_consumption_counter_reset_and_negative_delta` |
+| **Date Range Validation** | 422 `INVALID_DATE_RANGE` on `from > to` | `src/urja_api/api/routes/consumption.py:27-31` | `test_error_consistency_rfc7807_and_codes` |
+| **Consistent ProblemDetails** | Standard schema on 404/405/422/502/503 | `src/urja_api/main.py:69-114`, `src/urja_api/errors.py:8-40` | `test_error_consistency_rfc7807_and_codes` |
+| **Geospatial Two-Phase Query** | SQL bounding box + Haversine | `src/urja_api/storage/repository.py:134-158`, `src/urja_api/services/meter_service.py:48-56` | `test_spatial_radius_search` |

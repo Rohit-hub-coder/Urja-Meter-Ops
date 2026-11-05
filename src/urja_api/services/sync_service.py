@@ -28,9 +28,10 @@ class SyncService:
         async with self._lock:
             now = time.time()
             if not force and (now - self._last_sync_time < settings.sync_cooldown_sec):
-                wait_sec = int(settings.sync_cooldown_sec - (now - self._last_sync_time))
+                wait_sec = max(1, int(settings.sync_cooldown_sec - (now - self._last_sync_time)))
                 raise RateLimitExceededError(
-                    f"Sync cooldown active. Please wait {wait_sec} seconds before synchronizing again."
+                    f"Sync cooldown active. Please wait {wait_sec} seconds before synchronizing again.",
+                    retry_after=wait_sec,
                 )
 
             logger.info("Starting bulk dataset synchronization from Urja portal...")

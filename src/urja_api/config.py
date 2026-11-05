@@ -14,7 +14,7 @@ class Settings:
     portal_password: str = os.getenv("URJA_PORTAL_PASSWORD", "")
     portal_user_agent: str = os.getenv(
         "PORTAL_USER_AGENT",
-        "UrjaMeterOpsApi/1.0 (take-home candidate; https://github.com/candidate/urja-api)",
+        "UrjaMeterOpsApi/1.0 (take-home candidate; https://github.com/<GITHUB_USERNAME>/<REPO_NAME>)",
     )
 
     # Polite Client & Resilience

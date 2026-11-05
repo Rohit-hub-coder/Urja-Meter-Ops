@@ -30,7 +30,7 @@ def parse_energy_telemetry(
     Parses and normalizes raw portal telemetry readings array into a strongly-typed,
     timezone-aware series with calculated interval consumption and aggregated summary.
     Handles:
-    - Counter regressions/resets (flags warning, clamps delta to 0)
+    - Counter regressions/resets (flags warning, sets interval delta to None)
     - Missing intervals / telemetry gaps (flags warning)
     - Duplicate timestamps (flags warning, deduplicates)
     - First reading in window (interval_active_energy_kwh is None)
@@ -138,7 +138,7 @@ def parse_energy_telemetry(
                         raw_value=f"prev={prev_kwh},curr={kwh}",
                     )
                 )
-                interval_delta = 0.0
+                interval_delta = None
             else:
                 interval_delta = delta
 

@@ -5,6 +5,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query, Response
 
 from src.urja_api.api.dependencies import get_energy_service
+from src.urja_api.errors import AppException
 from src.urja_api.models.consumption import MeterConsumptionResponse
 from src.urja_api.services.energy_service import EnergyService
 
@@ -26,6 +27,14 @@ async def get_meter_consumption(
     to_date: Optional[datetime] = Query(None, description="End date/timestamp boundary (e.g. 2026-06-28)."),
     energy_service: EnergyService = Depends(get_energy_service),
 ):
+    if from_date and to_date and from_date > to_date:
+        raise AppException(
+            status_code=422,
+            title="Invalid Date Range",
+            detail="Query parameter 'from_date' cannot be chronologically after 'to_date'.",
+            code="INVALID_DATE_RANGE",
+        )
+
     consumption = await energy_service.get_meter_consumption(meter_id=meter_id, from_dt=from_date, to_dt=to_date)
 
     response.headers["X-Data-Fetched-At"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())

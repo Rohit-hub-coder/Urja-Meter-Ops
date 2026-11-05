@@ -125,7 +125,7 @@ def test_consumption_counter_reset_and_negative_delta():
     assert len(resp.readings) == 3
     assert resp.readings[0].interval_active_energy_kwh is None
     assert resp.readings[1].interval_active_energy_kwh == 2.5
-    assert resp.readings[2].interval_active_energy_kwh == 0.0  # Clamped to 0 on regression
+    assert resp.readings[2].interval_active_energy_kwh is None  # Set to None on regression
     warns = [w for w in resp.data_quality_warnings if "Counter regression" in w.message]
     assert len(warns) == 1
 

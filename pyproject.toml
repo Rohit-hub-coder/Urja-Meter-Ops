@@ -4,6 +4,9 @@ version = "0.1.0"
 description = "Clean, resilient API service and synchronization layer in front of legacy Urja Meter Ops portal."
 readme = "README.md"
 requires-python = ">=3.11"
+authors = [
+    { name = "Rohit Kumar", email = "23_se_129@dtu.ac.in" }
+]
 dependencies = [
     "fastapi>=0.110.0",
     "uvicorn>=0.28.0",

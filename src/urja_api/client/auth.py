@@ -64,7 +64,9 @@ class SessionManager:
 
     async def _login(self, client: httpx.AsyncClient):
         if not settings.portal_username or not settings.portal_password:
-            raise UpstreamPortalError("Portal credentials not configured in environment.")
+            raise UpstreamPortalError(
+                "Portal credentials not configured. Please set URJA_PORTAL_USERNAME and URJA_PORTAL_PASSWORD in .env."
+            )
 
         login_url = f"{settings.portal_base_url}/login"
         headers = {

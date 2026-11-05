@@ -5,6 +5,8 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.staticfiles import StaticFiles
 
 from src.urja_api.api.routes import consumption, health, hierarchy, meters, sync
 from src.urja_api.errors import (
@@ -81,18 +83,59 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     )
 
 
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    code_map = {
+        404: "NOT_FOUND",
+        405: "METHOD_NOT_ALLOWED",
+        400: "BAD_REQUEST",
+    }
+    code = code_map.get(exc.status_code, f"HTTP_{exc.status_code}")
+    title_map = {
+        404: "Resource Not Found",
+        405: "Method Not Allowed",
+        400: "Bad Request",
+    }
+    title = title_map.get(exc.status_code, exc.detail if isinstance(exc.detail, str) else "HTTP Error")
+    detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+    problem = ProblemDetails(
+        type=f"https://api.urja-ops.local/errors/{code.lower().replace('_', '-')}",
+        title=title,
+        status=exc.status_code,
+        detail=detail,
+        instance=request.url.path,
+        code=code,
+    )
+    headers = getattr(exc, "headers", None)
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=problem.model_dump(exclude_none=True),
+        media_type="application/problem+json",
+        headers=headers,
+    )
+
+
 app.add_exception_handler(Exception, generic_exception_handler)
 
+DEFAULT_ERROR_RESPONSES = {
+    400: {"model": ProblemDetails, "description": "Bad Request"},
+    404: {"model": ProblemDetails, "description": "Resource Not Found"},
+    422: {"model": ProblemDetails, "description": "Validation Error"},
+    502: {"model": ProblemDetails, "description": "Upstream Gateway Error"},
+    503: {"model": ProblemDetails, "description": "Service Unavailable"},
+}
+
 # Include API Routers
-app.include_router(meters.router)
-app.include_router(consumption.router)
-app.include_router(hierarchy.router)
-app.include_router(sync.router)
-app.include_router(health.router)
+app.include_router(meters.router, responses=DEFAULT_ERROR_RESPONSES)
+app.include_router(consumption.router, responses=DEFAULT_ERROR_RESPONSES)
+app.include_router(hierarchy.router, responses=DEFAULT_ERROR_RESPONSES)
+app.include_router(sync.router, responses=DEFAULT_ERROR_RESPONSES)
+app.include_router(health.router, responses=DEFAULT_ERROR_RESPONSES)
 
 # Serve Web Console / Dashboard
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "web", "static")
 if os.path.exists(STATIC_DIR):
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
     @app.api_route("/ui", methods=["GET", "HEAD"], include_in_schema=False)
     @app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)

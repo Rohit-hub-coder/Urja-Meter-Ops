@@ -1,0 +1,68 @@
+{
+  "meter_id": "J100368",
+  "serial_number": "L&37528",
+  "make": "HPL",
+  "phase_type": "three",
+  "install_status": "Faulty",
+  "install_type": "Whole Current",
+  "build_version": "legacy",
+  "dt_code": "DT-009",
+  "location": {
+    "latitude": 26.916888334176132,
+    "longitude": 75.78477906508856,
+    "distance_km": null
+  },
+  "hierarchy": {
+    "zone": {
+      "code": "Z-03",
+      "name": "Jaipur Zone 3",
+      "raw_code": "Z-03",
+      "raw_name": "Jaipur Zone 3",
+      "is_inferred": false
+    },
+    "circle": {
+      "code": "C-03",
+      "name": "Circle 3",
+      "raw_code": "C-03",
+      "raw_name": "Circle 3",
+      "is_inferred": false
+    },
+    "division": {
+      "code": "D-09",
+      "name": "Division 9",
+      "raw_code": "D-09",
+      "raw_name": "Division 9",
+      "is_inferred": false
+    },
+    "subdivision": {
+      "code": "SD-09",
+      "name": "Subdivision 9",
+      "raw_code": "SD-09",
+      "raw_name": "Subdivision 9",
+      "is_inferred": false
+    },
+    "substation": {
+      "code": "SS-09",
+      "name": "Substation 9",
+      "raw_code": "SS-09",
+      "raw_name": "Substation 9",
+      "is_inferred": false
+    },
+    "feeder": {
+      "code": "F-009",
+      "name": "Feeder 9",
+      "raw_code": "F-009",
+      "raw_name": "Feeder 9",
+      "is_inferred": false
+    },
+    "dt": {
+      "code": "DT-009",
+      "name": "Sikar Road DT 9",
+      "raw_code": "DT-009",
+      "raw_name": "Sikar Road DT 9",
+      "is_inferred": false
+    }
+  },
+  "data_quality_warnings": [],
+  "nameplate_attributes": {}
+}

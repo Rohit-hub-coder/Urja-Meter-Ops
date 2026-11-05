@@ -8,13 +8,40 @@ from pydantic import BaseModel, Field
 class ProblemDetails(BaseModel):
     """RFC 7807 Problem Details representation."""
 
-    type: str = Field(default="about:blank", description="A URI reference that identifies the problem type.")
-    title: str = Field(..., description="A short, human-readable summary of the problem type.")
-    status: int = Field(..., description="The HTTP status code.")
-    detail: Optional[str] = Field(None, description="A human-readable explanation specific to this occurrence.")
-    instance: Optional[str] = Field(None, description="A URI reference that identifies the specific occurrence.")
-    code: Optional[str] = Field(None, description="Machine-readable application error code.")
-    invalid_params: Optional[list] = Field(None, description="Details for validation errors if applicable.")
+    type: str = Field(
+        default="about:blank",
+        description="A URI reference that identifies the problem type.",
+        json_schema_extra={"example": "https://api.urja-ops.local/errors/not-found"},
+    )
+    title: str = Field(
+        ...,
+        description="A short, human-readable summary of the problem type.",
+        json_schema_extra={"example": "Resource Not Found"},
+    )
+    status: int = Field(
+        ...,
+        description="The HTTP status code.",
+        json_schema_extra={"example": 404},
+    )
+    detail: Optional[str] = Field(
+        None,
+        description="A human-readable explanation specific to this occurrence.",
+        json_schema_extra={"example": "Meter 'J999999' was not found."},
+    )
+    instance: Optional[str] = Field(
+        None,
+        description="A URI reference that identifies the specific occurrence.",
+        json_schema_extra={"example": "/api/v1/meters/J999999"},
+    )
+    code: Optional[str] = Field(
+        None,
+        description="Machine-readable application error code.",
+        json_schema_extra={"example": "NOT_FOUND"},
+    )
+    invalid_params: Optional[list] = Field(
+        None,
+        description="Details for validation errors if applicable.",
+    )
 
 
 class AppException(Exception):
@@ -64,13 +91,18 @@ class UpstreamUnavailableError(AppException):
 
 
 class RateLimitExceededError(AppException):
-    def __init__(self, message: str = "Rate limit exceeded. Please wait before retrying."):
+    def __init__(
+        self,
+        message: str = "Rate limit exceeded. Please wait before retrying.",
+        retry_after: Optional[int] = None,
+    ):
         super().__init__(status_code=429, title="Too Many Requests", detail=message, code="RATE_LIMIT_EXCEEDED")
+        self.retry_after = retry_after
 
 
 async def app_exception_handler(request: Request, exc: AppException) -> JSONResponse:
     problem = ProblemDetails(
-        type=f"https://api.urja-ops.local/errors/{exc.code.lower()}",
+        type=f"https://api.urja-ops.local/errors/{exc.code.lower().replace('_', '-')}",
         title=exc.title,
         status=exc.status_code,
         detail=exc.detail,
@@ -78,10 +110,14 @@ async def app_exception_handler(request: Request, exc: AppException) -> JSONResp
         code=exc.code,
         invalid_params=exc.invalid_params,
     )
+    headers = {}
+    if hasattr(exc, "retry_after") and exc.retry_after is not None:
+        headers["Retry-After"] = str(exc.retry_after)
     return JSONResponse(
         status_code=exc.status_code,
         content=problem.model_dump(exclude_none=True),
         media_type="application/problem+json",
+        headers=headers or None,
     )
 
 
