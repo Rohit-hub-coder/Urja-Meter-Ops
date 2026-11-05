@@ -20,6 +20,21 @@ from src.urja_api.storage.database import init_database
 async def lifespan(app: FastAPI):
     # Startup: ensure SQLite database schema and indexes exist
     await init_database()
+
+    # Auto-seed cache on cold start if database is empty and credentials are configured
+    from src.urja_api.api.dependencies import get_repository, get_sync_service
+    from src.urja_api.config import settings
+
+    repo = get_repository()
+    count = await repo.get_total_meters_count()
+    if count == 0 and settings.portal_username and settings.portal_password:
+        try:
+            sync_service = get_sync_service()
+            await sync_service.sync_all(force=True)
+        except Exception:
+            # If upstream is unreachable during startup, let service start so /health and offline fallback can operate
+            pass
+
     yield
     # Shutdown
 

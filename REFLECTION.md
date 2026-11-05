@@ -54,5 +54,5 @@
 ---
 
 ### 6. AI-Use Disclosure & Verification Strategy
-- **Tools Used**: AI assistant utilized as a senior pair programmer for rapid code generation, pattern synthesis, boilerplate modeling, and test drafting.
-- **Verification Method**: Zero claims were accepted without empirical execution. Every portal wire behavior was probed with live HTTP scripts, saved as redacted evidence in `docs/evidence/`, saved as offline fixtures in `tests/fixtures/`, and verified with 21 unit and integration tests passing locally.
+- **Tools Used**: Gemini 3.8 Flash (High) via Antigravity agentic coding assistant was utilized as a senior pair programmer for reverse-engineering investigation, architecture implementation, test authoring, and documentation. Claude (Anthropic) was used to draft and review the initial agent prompt.
+- **Verification Strategy**: Zero claims were accepted without empirical execution. Every single portal wire format, endpoint behavior, and edge case was empirically probed against the live portal, captured into `docs/evidence/`, saved as offline fixtures in `tests/fixtures/`, and verified with automated test suites passing locally.

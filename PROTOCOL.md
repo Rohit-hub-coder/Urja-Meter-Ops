@@ -81,11 +81,14 @@
   * Meter master: `meterId`, `serialNo`, `make`, `phaseType`, `installStatus`, `installType`, `build`, `dtCode`.
   * Geo coordinates: `geo: { "lat": 26.93896..., "lng": 75.83095... }` (floats).
   * Hierarchy: 7 nested objects (`zone`, `circle`, `division`, `subdivision`, `substation`, `feeder`, `dt`), each with `name` and `code`.
-* **Pagination Note**: **[OBSERVED]** The `page` query parameter is cosmetic; `page=1` and `page=2` both return the entire 403-record dataset.
+* **Pagination & Query Parameters [OBSERVED]**:
+  * The query parameter `page=1` is hardcoded in the portal's client script, but the upstream server ignores `page`.
+  * The response keys are strictly `{"data": [...], "total": 403}`.
+  * There is **no pagination metadata** (no `page`, `limit`, `total_pages`, or `has_next` fields). The endpoint always dumps the full 403-meter dataset in one call (~250ms).
 
 ### 3.1.1 Export Legitimacy & First-Party Verification
-* **Evidence from Live UI Component**: Discovered directly inside the portal's client-side SvelteKit bundle `/_app/immutable/nodes/4.2Bgc2kUI.js` (the component backing the `/transformers` route).
-* **Decompiled Portal Source Excerpt**:
+* **Source Bundle**: Located in the portal's production client-side SvelteKit bundle `/_app/immutable/nodes/4.2Bgc2kUI.js` (the component backing the `/transformers` UI route).
+* **De-minified Code Excerpt**: The snippet below is a formatted, de-minified excerpt of the client bundle code (minified single-letter identifiers expanded for clarity):
   ```javascript
   // HMAC-SHA256 signature generator embedded in the portal client bundle:
   async function C(method, path, query, secret) {
@@ -145,7 +148,7 @@
 * **404 Behavior**: Returns `404 Not Found` with `{"error":"not_found","message":"Meter not found"}`.
 
 ### 3.5 Meter Telemetry: `GET /portal/meters/{meterId}/energy`
-* **Response**: Array of 337 half-hourly load survey records.
+* **Response**: Array of load survey records.
 * **Fields per record**:
   * `timestamp`: `"DD/MM/YYYY HH:MM"` (e.g. `"24/06/2026 00:00"`).
   * `kwh`: Cumulative active energy register reading (string float, e.g. `"48439.16"`).
@@ -155,6 +158,21 @@
   * `from=YYYY-MM-DD`: Earliest date boundary.
   * `to=YYYY-MM-DD`: Latest date boundary.
 * **Limitations [OBSERVED]**: Sub-day ISO timestamps (e.g. `2026-06-25T12:00:00`) are ignored by upstream and return the default full window.
+
+### 3.5.1 Empirical Telemetry Census (Stratified Sample of 50 Meters)
+An automated rate-limited audit (`scripts/telemetry_census.py`, concurrency 2, delay 250ms) evaluated 50 meters spanning all 30 combinations of 5 manufacturers (`Allied`, `Genus`, `HPL`, `L&T`, `Secure`), 2 phase types (`single`, `three`), and 3 lifecycle states (`Installed`, `Faulty`, `Decommissioned`). Evidence saved to `docs/evidence/13_telemetry_census.md`.
+
+* **Observed Metrics [OBSERVED]**:
+  * **Dual Cadence Breakdown**:
+    * **30-Minute Cadence**: 32 of 50 meters (64.0%) report 30-minute block interval telemetry (typically 337 readings across a 7-day span).
+    * **Daily Midnight Snapshot Cadence**: 18 of 50 meters (36.0%) report exactly one reading per day at midnight (`00:00:00`), totaling 8 daily snapshot readings.
+  * **Negative Deltas / Counter Regressions**: Exactly 0 negative deltas observed across all 50 meters. Registers are monotonically non-decreasing.
+  * **Timestamp Continuity**: Exactly 0 timestamp gaps (>1.5× expected cadence) observed.
+  * **Duplicate Timestamps**: Exactly 0 duplicate timestamps observed.
+  * **Decommissioned Meters Telemetry Retention**: 17 of 17 sampled decommissioned meters (100%) still return full historical telemetry on this endpoint.
+* **Domain Hypotheses [ASSUMED]**:
+  * *Daily cadence meters*: Likely represent legacy non-interval commercial/bulk meters or meters configured for daily midnight billing register captures rather than full load profile survey logging.
+  * *Decommissioned meter data retention*: Decommissioning reflects an administrative status flag in the utility's outage/inventory database; meter telemetry is retained in the historical time-series database.
 
 ---
 

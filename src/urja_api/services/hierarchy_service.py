@@ -43,6 +43,15 @@ class HierarchyService:
             cursor = await conn.execute(sql)
             rows = await cursor.fetchall()
 
+            # If cache is completely unpopulated, trigger lazy sync on first access
+            if not rows:
+                from src.urja_api.api.dependencies import get_sync_service
+
+                sync_service = get_sync_service()
+                await sync_service.sync_all(force=True)
+                cursor = await conn.execute(sql)
+                rows = await cursor.fetchall()
+
             # Data structure builders
             # Zone -> Circle -> Division -> Subdivision -> Substation -> Feeder -> DT
             zones_dict: Dict[str, Dict] = {}
