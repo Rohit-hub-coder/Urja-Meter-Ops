@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Urja Meter Ops: API Console & Ops Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    #map { height: 380px; width: 100%; border-radius: 0.75rem; }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen">
+  <!-- Header -->
+  <header class="border-b border-slate-800 bg-slate-950/80 backdrop-blur sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></div>
+        <h1 class="text-xl font-bold tracking-tight text-white">Urja Meter Ops <span class="text-xs px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800">REST API v1</span></h1>
+      </div>
+      <div class="flex items-center space-x-4 text-sm">
+        <span id="portal-status-badge" class="px-3 py-1 rounded-full text-xs font-medium bg-slate-800 text-slate-400">Checking portal...</span>
+        <a href="/docs" target="_blank" class="text-blue-400 hover:text-blue-300 font-medium">OpenAPI Swagger UI &rarr;</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-6 py-8 space-y-8">
+    <!-- Top Stats Row -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div class="bg-slate-800/60 border border-slate-700/60 rounded-xl p-5">
+        <div class="text-xs text-slate-400 font-semibold uppercase tracking-wider">Total Synced Meters</div>
+        <div id="stat-meters" class="text-3xl font-extrabold text-white mt-1">--</div>
+        <div class="text-xs text-slate-500 mt-1">403 in Jaipur metro discom</div>
+      </div>
+      <div class="bg-slate-800/60 border border-slate-700/60 rounded-xl p-5">
+        <div class="text-xs text-slate-400 font-semibold uppercase tracking-wider">Distribution Transformers</div>
+        <div id="stat-dts" class="text-3xl font-extrabold text-emerald-400 mt-1">40</div>
+        <div class="text-xs text-slate-500 mt-1">100% mapped without orphans</div>
+      </div>
+      <div class="bg-slate-800/60 border border-slate-700/60 rounded-xl p-5">
+        <div class="text-xs text-slate-400 font-semibold uppercase tracking-wider">Data Quality Repairs</div>
+        <div class="text-3xl font-extrabold text-amber-400 mt-1">22 <span class="text-sm font-normal text-slate-400">(5.5%)</span></div>
+        <div class="text-xs text-slate-500 mt-1">Auto-inferred missing names/codes</div>
+      </div>
+      <div class="bg-slate-800/60 border border-slate-700/60 rounded-xl p-5">
+        <div class="text-xs text-slate-400 font-semibold uppercase tracking-wider">Upstream Latency</div>
+        <div id="stat-latency" class="text-3xl font-extrabold text-blue-400 mt-1">-- ms</div>
+        <div class="text-xs text-slate-500 mt-1">Polite client max 2 concurrency</div>
+      </div>
+    </div>
+
+    <!-- Map & Consumption Chart Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <!-- Geospatial Map -->
+      <div class="bg-slate-800/40 border border-slate-700/60 rounded-2xl p-6 flex flex-col justify-between">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h2 class="text-lg font-semibold text-white">Geospatial Distribution</h2>
+            <p class="text-xs text-slate-400">Jaipur, Rajasthan (Lat 26.78-27.04, Lng 75.66-75.91)</p>
+          </div>
+          <span class="text-xs bg-slate-700/50 text-slate-300 px-2.5 py-1 rounded-md">WGS 84</span>
+        </div>
+        <div id="map"></div>
+      </div>
+
+      <!-- Energy Telemetry Load Curve -->
+      <div class="bg-slate-800/40 border border-slate-700/60 rounded-2xl p-6 flex flex-col justify-between">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h2 class="text-lg font-semibold text-white">30-Min Load Curve & Voltage</h2>
+            <p class="text-xs text-slate-400" id="chart-subhead">Sample Meter J100000 (337 telemetry points)</p>
+          </div>
+          <div class="flex items-center space-x-2">
+            <input type="text" id="chart-meter-input" value="J100000" class="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 w-24 text-center" />
+            <button onclick="loadConsumptionChart(document.getElementById('chart-meter-input').value)" class="bg-blue-600 hover:bg-blue-500 text-white text-xs px-2.5 py-1 rounded">Load</button>
+          </div>
+        </div>
+        <div class="h-[380px] w-full flex items-center justify-center">
+          <canvas id="consumptionChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Search & Meter Inventory Table -->
+    <div class="bg-slate-800/40 border border-slate-700/60 rounded-2xl p-6">
+      <div class="flex flex-col md:flex-row items-center justify-between gap-4 mb-6">
+        <div>
+          <h2 class="text-lg font-semibold text-white">Meter Inventory & Attributes</h2>
+          <p class="text-xs text-slate-400">Query local SQLite index with cross-attribute filters</p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2 w-full md:w-auto">
+          <input type="text" id="search-q" placeholder="Search meter ID / serial..." class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500 w-48" onkeyup="if(event.key==='Enter') loadMeters()" />
+          <select id="filter-make" class="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-300" onchange="loadMeters()">
+            <option value="">All Makes</option>
+            <option value="HPL">HPL</option>
+            <option value="Genus">Genus</option>
+            <option value="Secure">Secure</option>
+            <option value="L&T">L&T</option>
+            <option value="Allied">Allied</option>
+          </select>
+          <select id="filter-status" class="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-300" onchange="loadMeters()">
+            <option value="">All Statuses</option>
+            <option value="Installed">Installed</option>
+            <option value="Faulty">Faulty</option>
+            <option value="Decommissioned">Decommissioned</option>
+          </select>
+          <button onclick="loadMeters()" class="bg-slate-700 hover:bg-slate-600 text-white text-xs px-3 py-1.5 rounded-lg">Apply</button>
+        </div>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-xs text-slate-300">
+          <thead class="bg-slate-900/60 uppercase tracking-wider text-slate-400 border-b border-slate-700">
+            <tr>
+              <th class="py-3 px-4">Meter ID</th>
+              <th class="py-3 px-4">Serial</th>
+              <th class="py-3 px-4">Make</th>
+              <th class="py-3 px-4">Phase</th>
+              <th class="py-3 px-4">Status</th>
+              <th class="py-3 px-4">DT Code</th>
+              <th class="py-3 px-4">Hierarchy</th>
+              <th class="py-3 px-4 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="meters-table-body" class="divide-y divide-slate-800">
+            <tr><td colspan="8" class="text-center py-6 text-slate-500">Loading meters from SQLite index...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    let map, markersLayer, chartInstance;
+
+    async function initDashboard() {
+      // 1. Init Leaflet Map
+      map = L.map('map').setView([26.9124, 75.7873], 11);
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; OpenStreetMap &copy; CARTO'
+      }).addTo(map);
+      markersLayer = L.layerGroup().addTo(map);
+
+      // 2. Fetch Health
+      try {
+        const hRes = await fetch('/api/v1/health');
+        const hData = await hRes.json();
+        const badge = document.getElementById('portal-status-badge');
+        if (hData.portal.is_reachable) {
+          badge.className = "px-3 py-1 rounded-full text-xs font-medium bg-emerald-950 text-emerald-400 border border-emerald-800";
+          badge.innerText = `Portal Online (${hData.portal.latency_ms}ms)`;
+          document.getElementById('stat-latency').innerText = `${hData.portal.latency_ms} ms`;
+        } else {
+          badge.className = "px-3 py-1 rounded-full text-xs font-medium bg-rose-950 text-rose-400 border border-rose-800";
+          badge.innerText = "Portal Offline";
+        }
+        document.getElementById('stat-meters').innerText = hData.cache.total_meters_indexed || '403';
+      } catch (e) {
+        console.error("Health check error", e);
+      }
+
+      // 3. Load meters and map
+      await loadMeters();
+
+      // 4. Load consumption chart
+      await loadConsumptionChart('J100000');
+    }
+
+    async function loadMeters() {
+      const q = document.getElementById('search-q').value;
+      const make = document.getElementById('filter-make').value;
+      const status = document.getElementById('filter-status').value;
+
+      let url = '/api/v1/meters?limit=50';
+      if (q) url += `&q=${encodeURIComponent(q)}`;
+      if (make) url += `&make=${encodeURIComponent(make)}`;
+      if (status) url += `&install_status=${encodeURIComponent(status)}`;
+
+      const res = await fetch(url);
+      const json = await res.json();
+      const meters = json.data || [];
+
+      // Render table
+      const tbody = document.getElementById('meters-table-body');
+      if (meters.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center py-6 text-slate-500">No matching meters found.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = meters.map(m => {
+        const statusColors = {
+          'Installed': 'bg-emerald-950 text-emerald-400 border-emerald-800',
+          'Faulty': 'bg-rose-950 text-rose-400 border-rose-800',
+          'Decommissioned': 'bg-slate-800 text-slate-400 border-slate-700'
+        };
+        const sColor = statusColors[m.install_status] || 'bg-slate-800 text-slate-400 border-slate-700';
+        const hFeeder = m.hierarchy?.feeder?.name || m.hierarchy?.feeder?.code || 'N/A';
+        const hDt = m.hierarchy?.dt?.name || m.dt_code || 'N/A';
+
+        return `
+          <tr class="hover:bg-slate-800/40 transition">
+            <td class="py-2.5 px-4 font-mono font-medium text-white">${m.meter_id}</td>
+            <td class="py-2.5 px-4 font-mono text-slate-400">${m.serial_number}</td>
+            <td class="py-2.5 px-4">${m.make}</td>
+            <td class="py-2.5 px-4 capitalize">${m.phase_type}</td>
+            <td class="py-2.5 px-4">
+              <span class="px-2 py-0.5 rounded text-[11px] border ${sColor}">${m.install_status}</span>
+            </td>
+            <td class="py-2.5 px-4 font-mono text-slate-400">${m.dt_code}</td>
+            <td class="py-2.5 px-4 text-slate-400 truncate max-w-xs">${hFeeder} &rsaquo; ${hDt}</td>
+            <td class="py-2.5 px-4 text-right">
+              <button onclick="inspectMeter('${m.meter_id}')" class="text-blue-400 hover:text-blue-300 font-medium">Inspect</button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      // Render markers on map
+      markersLayer.clearLayers();
+      meters.forEach(m => {
+        if (m.location?.latitude && m.location?.longitude) {
+          const marker = L.circleMarker([m.location.latitude, m.location.longitude], {
+            radius: 5,
+            fillColor: m.install_status === 'Installed' ? '#10b981' : (m.install_status === 'Faulty' ? '#f43f5e' : '#64748b'),
+            color: '#0f172a',
+            weight: 1,
+            opacity: 1,
+            fillOpacity: 0.8
+          });
+          marker.bindPopup(`<b>Meter ${m.meter_id}</b><br/>Serial: ${m.serial_number}<br/>Make: ${m.make}<br/>DT: ${m.dt_code}<br/><button onclick="inspectMeter('${m.meter_id}')" style="margin-top:6px; color:#3b82f6; text-decoration:underline;">View Telemetry</button>`);
+          markersLayer.addLayer(marker);
+        }
+      });
+    }
+
+    async function inspectMeter(meterId) {
+      document.getElementById('chart-meter-input').value = meterId;
+      await loadConsumptionChart(meterId);
+      window.scrollTo({ top: 300, behavior: 'smooth' });
+    }
+
+    async function loadConsumptionChart(meterId) {
+      document.getElementById('chart-subhead').innerText = `Loading telemetry for Meter ${meterId}...`;
+      try {
+        const res = await fetch(`/api/v1/meters/${meterId}/consumption`);
+        if (!res.ok) {
+          document.getElementById('chart-subhead').innerText = `Failed to load telemetry for ${meterId} (${res.status})`;
+          return;
+        }
+        const data = await res.json();
+        const readings = data.readings || [];
+
+        document.getElementById('chart-subhead').innerText = `Meter ${meterId} (${readings.length} half-hourly points, Total: ${data.summary.total_active_energy_consumed_kwh} kWh)`;
+
+        // Sample last 48 readings (last 24 hours) for high-clarity curve
+        const slice = readings.slice(-48);
+        const labels = slice.map(r => r.timestamp_iso.substring(11, 16));
+        const kwhDeltas = slice.map(r => r.interval_active_energy_kwh || 0);
+        const voltages = slice.map(r => r.voltage_phase_r_volts || 0);
+
+        if (chartInstance) chartInstance.destroy();
+
+        const ctx = document.getElementById('consumptionChart').getContext('2d');
+        chartInstance = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: labels,
+            datasets: [
+              {
+                label: 'Interval Active Energy (kWh)',
+                data: kwhDeltas,
+                borderColor: '#10b981',
+                backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                fill: true,
+                yAxisID: 'yKwh',
+                tension: 0.3
+              },
+              {
+                label: 'Voltage R (V)',
+                data: voltages,
+                borderColor: '#38bdf8',
+                borderDash: [5, 5],
+                yAxisID: 'yVolt',
+                tension: 0.2
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+              x: { ticks: { color: '#94a3b8', font: { size: 10 } }, grid: { color: '#334155' } },
+              yKwh: {
+                type: 'linear',
+                position: 'left',
+                ticks: { color: '#10b981' },
+                grid: { color: '#1e293b' },
+                title: { display: true, text: 'Active Energy (kWh)', color: '#10b981' }
+              },
+              yVolt: {
+                type: 'linear',
+                position: 'right',
+                ticks: { color: '#38bdf8' },
+                grid: { drawOnChartArea: false },
+                title: { display: true, text: 'Voltage (V)', color: '#38bdf8' }
+              }
+            },
+            plugins: {
+              legend: { labels: { color: '#f8fafc', font: { size: 11 } } }
+            }
+          }
+        });
+      } catch (e) {
+        console.error("Telemetry error", e);
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', initDashboard);
+  </script>
+</body>
+</html>

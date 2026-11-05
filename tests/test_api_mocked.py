@@ -1,0 +1,224 @@
+import json
+
+import httpx
+import pytest
+import respx
+
+from src.urja_api.config import settings
+from src.urja_api.main import app
+from src.urja_api.parsers.meter_parser import parse_meter_from_export
+from src.urja_api.storage.database import init_database
+from src.urja_api.storage.repository import MeterRepository
+
+
+@pytest.fixture(autouse=True)
+async def setup_test_db(tmp_path, monkeypatch):
+    db_file = tmp_path / "test_api.db"
+    monkeypatch.setattr(settings, "database_path", str(db_file))
+    await init_database()
+
+    # Pre-populate with fixtures
+    with open("tests/fixtures/portal_export.json") as f:
+        export_data = json.load(f)
+    meters = [parse_meter_from_export(m) for m in export_data["data"]]
+
+    with open("tests/fixtures/portal_dts_page1.json") as f:
+        dts_data = json.load(f)["data"]
+
+    repo = MeterRepository()
+    await repo.upsert_transformers(dts_data)
+    await repo.upsert_meters(meters)
+    await repo.record_sync_metadata("meters_bulk", len(meters), "success")
+
+
+@pytest.mark.asyncio
+async def test_list_meters_happy_path():
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        res = await client.get("/api/v1/meters?page=1&limit=10")
+        assert res.status_code == 200
+        data = res.json()
+        assert len(data["data"]) == 10
+        assert data["pagination"]["total_records"] == 403
+        assert data["pagination"]["total_pages"] == 41
+        assert data["pagination"]["page"] == 1
+        assert "X-Cache" in res.headers
+        assert res.headers["X-Cache"] == "HIT"
+
+
+@pytest.mark.asyncio
+async def test_filter_meters_by_make_and_status():
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        res = await client.get("/api/v1/meters?make=HPL&install_status=Installed")
+        assert res.status_code == 200
+        data = res.json()
+        assert all(m["make"] == "HPL" for m in data["data"])
+        assert all(m["install_status"] == "Installed" for m in data["data"])
+
+
+@pytest.mark.asyncio
+async def test_spatial_radius_search():
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        # Search near Jaipur center: Lat 26.9124, Lng 75.7873 within 5 km
+        res = await client.get("/api/v1/meters?near_lat=26.9124&near_lng=75.7873&radius_km=5.0")
+        assert res.status_code == 200
+        data = res.json()
+        assert len(data["data"]) > 0
+        # All returned meters must have distance_km <= 5.0
+        for m in data["data"]:
+            assert m["location"]["distance_km"] is not None
+            assert m["location"]["distance_km"] <= 5.0
+        # Distance must be sorted ascending
+        distances = [m["location"]["distance_km"] for m in data["data"]]
+        assert distances == sorted(distances)
+
+
+@pytest.mark.asyncio
+async def test_get_meter_detail_found():
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        res = await client.get("/api/v1/meters/J100000")
+        assert res.status_code == 200
+        m = res.json()
+        assert m["meter_id"] == "J100000"
+        assert m["serial_number"] == "SE33962"
+        assert m["make"] == "HPL"
+        assert m["hierarchy"]["zone"]["code"] == "Z-01"
+
+
+@pytest.mark.asyncio
+async def test_get_meter_not_found_rfc7807():
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        res = await client.get("/api/v1/meters/NONEXISTENT_METER_999")
+        assert res.status_code == 404
+        assert res.headers["content-type"] == "application/problem+json"
+        problem = res.json()
+        assert problem["status"] == 404
+        assert problem["title"] == "Resource Not Found"
+        assert "NONEXISTENT_METER_999" in problem["detail"]
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_meter_consumption_endpoint():
+    # Mock portal upstream energy endpoint
+    with open("tests/fixtures/meter_energy.json") as f:
+        energy_fixture = json.load(f)
+
+    respx.get(f"{settings.portal_base_url}/portal/meters/J100000/energy").respond(status_code=200, json=energy_fixture)
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        res = await client.get("/api/v1/meters/J100000/consumption")
+        assert res.status_code == 200
+        data = res.json()
+        assert data["meter_id"] == "J100000"
+        assert data["granularity"] == "30min"
+        assert len(data["readings"]) == 337
+        assert data["summary"]["total_active_energy_consumed_kwh"] > 0
+        assert data["summary"]["average_voltage_volts"] > 200.0
+
+
+@pytest.mark.asyncio
+async def test_hierarchy_tree_endpoint():
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        res = await client.get("/api/v1/hierarchy")
+        assert res.status_code == 200
+        data = res.json()
+        assert data["total_meters"] == 403
+        assert len(data["root_zones"]) == 3
+        # Check rollups
+        total_zone_meters = sum(z["meter_count"] for z in data["root_zones"])
+        assert total_zone_meters == 403
+
+
+@pytest.mark.asyncio
+async def test_hierarchy_node_detail_view():
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        res = await client.get("/api/v1/hierarchy/nodes/DT-001")
+        assert res.status_code == 200
+        data = res.json()
+        assert data["id"] == "DT-001"
+        assert data["type"] == "dt"
+        assert data["meter_count"] > 0
+        assert len(data["children"]) == data["meter_count"]
+        assert len(data["ancestors"]) > 0
+        assert data["ancestors"][0]["type"] == "zone"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_health_check_healthy():
+    # Mock portal login check
+    respx.get(f"{settings.portal_base_url}/login").respond(status_code=200)
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        res = await client.get("/api/v1/health")
+        assert res.status_code == 200
+        data = res.json()
+        assert data["status"] == "healthy"
+        assert data["portal"]["is_reachable"] is True
+        assert data["cache"]["is_cached"] is True
+        assert data["cache"]["total_meters_indexed"] == 403
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_upstream_session_expiry_resilience():
+    """Tests that a 302 silent redirect on expired session triggers automatic re-login."""
+    from src.urja_api.client.auth import SessionManager
+    from src.urja_api.client.portal_client import UrjaPortalClient
+
+    sm = SessionManager()
+    # Set an initial dummy token
+    sm._session_token = "expired_token_abc"
+    sm._token_expires_at = 9999999999.0
+
+    p_client = UrjaPortalClient(session_manager=sm)
+
+    # First energy call returns 302 -> /login
+    route_energy = respx.get(f"{settings.portal_base_url}/portal/meters/J100000/energy")
+    route_energy.side_effect = [
+        httpx.Response(302, headers={"location": "/login"}),
+        httpx.Response(
+            200, json={"data": [{"timestamp": "24/06/2026 00:00", "kwh": "100.0", "kvah": "105.0", "voltR": "230"}]}
+        ),
+    ]
+
+    # Re-login route
+    respx.post(f"{settings.portal_base_url}/login").respond(
+        status_code=200, headers={"set-cookie": "__Secure-better-auth.session_token=fresh_token_xyz; Path=/"}
+    )
+
+    res = await p_client.fetch_meter_energy("J100000")
+    assert "data" in res
+    assert len(res["data"]) == 1
+    assert sm._session_token == "fresh_token_xyz"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_upstream_502_error_mapping():
+    """Tests that upstream 500/502 errors map to RFC 7807 502 Bad Gateway."""
+    from src.urja_api.client.auth import SessionManager
+    from src.urja_api.client.portal_client import UrjaPortalClient
+    from src.urja_api.errors import UpstreamPortalError
+
+    sm = SessionManager()
+    sm._session_token = "valid_token"
+    sm._token_expires_at = 9999999999.0
+
+    p_client = UrjaPortalClient(session_manager=sm)
+    # Mock persistent 502 from upstream
+    respx.get(f"{settings.portal_base_url}/portal/meters/J100000/energy").respond(status_code=502)
+
+    with pytest.raises(UpstreamPortalError) as exc_info:
+        await p_client.fetch_meter_energy("J100000")
+    assert exc_info.value.status_code == 502
+    assert "Upstream portal returned HTTP 502" in exc_info.value.detail

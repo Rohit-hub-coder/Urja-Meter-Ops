@@ -1,0 +1,262 @@
+# Urja Meter Ops API Service
+
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-009688.svg)](https://fastapi.tiangolo.com)
+[![Pydantic v2](https://img.shields.io/badge/Pydantic-v2-E92063.svg)](https://docs.pydantic.dev/)
+[![Tests](https://img.shields.io/badge/tests-21%20passed-success.svg)](tests/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+A production-grade, resilient RESTful API and synchronization service built in front of the legacy **Urja Meter Ops** smart-metering web portal.
+
+The service provides clean, normalized, and typed programmatic access to meter metadata, 7-tier distribution network hierarchy, geospatial lookups, and 30-minute interval telemetry load curves without placing unnecessary load on the upstream portal.
+
+---
+
+## Architecture Overview
+
+```mermaid
+flowchart TD
+    Client(["Client / Front-End Consumer"]) -->|HTTP REST JSON| API["FastAPI Application (main.py)"]
+    
+    subgraph ServiceLayer ["Application & Service Layer"]
+        API --> RouteMeters["GET /api/v1/meters"]
+        API --> RouteConsumption["GET /api/v1/meters/{id}/consumption"]
+        API --> RouteHierarchy["GET /api/v1/hierarchy"]
+        API --> RouteSync["POST /api/v1/sync"]
+        API --> RouteHealth["GET /api/v1/health"]
+        
+        RouteMeters --> MeterService["MeterService"]
+        RouteConsumption --> EnergyService["EnergyService (15m Cache)"]
+        RouteHierarchy --> HierarchyService["HierarchyService"]
+        RouteSync --> SyncService["SyncService"]
+    end
+    
+    subgraph StorageLayer ["Local Storage & Cache"]
+        MeterService <--> SQLite[("SQLite Database (aiosqlite)\n• Bounding Box Prefilter\n• Indexed Attributes\n• SWR Metadata")]
+        HierarchyService <--> SQLite
+        SyncService -->|Batch Upsert| SQLite
+    end
+
+    subgraph ParserLayer ["Pure Stateless Parsers (Tested Offline)"]
+        MeterParser["meter_parser.py"]
+        HierarchyParser["hierarchy_parser.py (Auto-Repair)"]
+        EnergyParser["energy_parser.py (IST, Deltas)"]
+    end
+
+    subgraph ClientLayer ["Polite Upstream Portal Client"]
+        PortalClient["UrjaPortalClient\n• Semaphore(2) Max Concurrency\n• 200ms Rate Delay\n• Exponential Backoff & Jitter\n• RFC 7807 Error Mapping"]
+        SessionMgr["SessionManager\n• Single-Flight Login (asyncio.Lock)\n• 1-Hour Cookie Management\n• HMAC-SHA256 Signer"]
+        PortalClient <--> SessionMgr
+    end
+
+    SyncService --> PortalClient
+    EnergyService --> PortalClient
+    PortalClient --> ParserLayer
+    PortalClient -->|HTTP/2 Read-Only| LegacyPortal[("Legacy Urja Meter Ops Portal\n(https://urja-ops.flockenergy.tech)")]
+```
+
+---
+
+## Key Features
+
+1. **Undocumented Bulk Synchronization**:
+   - Reconstructed the portal's HMAC-SHA256 signature protocol discovered in Vite client bundles (`/portal/export`).
+   - Synchronizes all **403 meters** and **40 distribution transformers** in a single polite ~250ms request, bypassing 20+ sequential paged scrapes.
+2. **Polite, Resilient Client**:
+   - Strictly bounded concurrency (`asyncio.Semaphore(2)`), 200ms inter-request pacing, and bounded retries with jitter.
+   - **Single-Flight Session Management**: Concurrent requests encountering an expired session wait on an `asyncio.Lock()` so only one login request reaches the upstream portal.
+   - Transparent upstream error mapping to **RFC 7807 Problem Details** (`application/problem+json`).
+3. **Data Quality & Automated Repair**:
+   - Quantified census across all 403 meters revealed **22 meters (5.46%)** with asymmetric missing hierarchy names or codes.
+   - Inferred missing fields from network peer nodes while surfacing explicit `DataQualityWarning` flags in API responses.
+   - 100% coordinate cleanliness verified (all 403 meters within Jaipur metropolitan bounds: Lat 26.78–27.04, Lng 75.66–75.91).
+4. **Fast Geospatial Radius Querying**:
+   - Two-phase spatial search: indexed SQL bounding-box prefilter + exact Python Haversine calculation with distance sorting.
+5. **Normalized Telemetry & Energy Semantics**:
+   - Telemetry parsed into timezone-aware **IST (UTC+05:30)** ISO-8601 timestamps.
+   - Differentiates cumulative counter registers (`kwh`, `kvah`) from calculated interval consumption deltas ($\Delta\text{kWh}$).
+6. **Zero-Build Operations Console**:
+   - Single-page dashboard served at `/ui` featuring Leaflet geospatial distribution map, Chart.js 30-min load curve, and search filters.
+
+---
+
+## Quickstart & Installation
+
+### Prerequisites
+- Python 3.11+ (or Python 3.12 / 3.13 / 3.14)
+- `uv` (recommended) or standard `python3 -m venv`
+
+### 1. Clone & Configure
+```bash
+git clone https://github.com/flock-energy/takehome.git urja-api
+cd urja-api
+
+# Create your local environment configuration
+cp .env.example .env
+```
+Edit `.env` to include your portal credentials:
+```ini
+URJA_PORTAL_BASE_URL=https://urja-ops.flockenergy.tech
+URJA_PORTAL_USERNAME=your_operator_email
+URJA_PORTAL_PASSWORD=your_portal_password
+PORT=8000
+```
+
+### 2. Install Dependencies
+Using `uv`:
+```bash
+uv venv .venv
+source .venv/bin/activate
+uv pip install -e . -r <(echo -e "pytest>=9.0.0\npytest-asyncio>=1.4.0\nrespx>=0.23.0\nruff>=0.17.0")
+```
+Or using standard `pip`:
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e . pytest pytest-asyncio respx ruff
+```
+
+### 3. Run the Service
+```bash
+make run
+# or directly:
+.venv/bin/uvicorn src.urja_api.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+The service is now running at `http://localhost:8000`:
+- **Interactive OpenAPI Documentation**: `http://localhost:8000/docs`
+- **ReDoc API Spec**: `http://localhost:8000/redoc`
+- **Zero-Build Web Console**: `http://localhost:8000/ui`
+- **Health & Readiness Check**: `http://localhost:8000/api/v1/health`
+
+---
+
+## API Documentation & Core Endpoints
+
+| Endpoint | Method | Description | Cache / Headers |
+|---|---|---|---|
+| `/api/v1/meters` | `GET` | List/filter meters (make, phase, status, DT, spatial radius `near_lat`/`near_lng`/`radius_km`). | `X-Cache: HIT/MISS`, `X-Data-Fetched-At` |
+| `/api/v1/meters/{id}` | `GET` | Retrieve complete meter details, nameplate attributes, and hierarchy links. | `X-Cache: HIT/MISS` |
+| `/api/v1/meters/{id}/consumption` | `GET` | 30-minute interval telemetry series, cumulative registers, and window summary. | `X-Cache: SWR` (15m TTL) |
+| `/api/v1/hierarchy` | `GET` | Full 7-tier network tree with rolled up meter counts at every node. | `X-Cache: HIT` (1h TTL) |
+| `/api/v1/hierarchy/nodes/{id}` | `GET` | Node detail view with full ancestor path and immediate children. | `X-Cache: HIT` |
+| `/api/v1/sync` | `POST` | Trigger bulk synchronization into SQLite index (cooldown rate-limited). | -- |
+| `/api/v1/health` | `GET` | Service operational health, upstream reachability, latency, and cache age. | -- |
+
+### Sample Request & Response
+
+#### 1. Geospatial Radius Search
+`GET /api/v1/meters?near_lat=26.9124&near_lng=75.7873&radius_km=3.0&limit=2`
+
+```json
+{
+  "data": [
+    {
+      "meter_id": "J100150",
+      "serial_number": "GE98201",
+      "make": "Genus",
+      "phase_type": "single",
+      "install_status": "Installed",
+      "install_type": "Whole Current",
+      "build_version": "v2",
+      "dt_code": "DT-015",
+      "location": {
+        "latitude": 26.9184,
+        "longitude": 75.7921,
+        "distance_km": 0.824
+      },
+      "hierarchy": {
+        "zone": { "code": "Z-01", "name": "Jaipur Zone 1" },
+        "feeder": { "code": "F-015", "name": "Feeder 15" },
+        "dt": { "code": "DT-015", "name": "Bani Park DT 15" }
+      },
+      "data_quality_warnings": []
+    }
+  ],
+  "pagination": {
+    "total_records": 18,
+    "page": 1,
+    "limit": 2,
+    "total_pages": 9,
+    "has_next": true,
+    "has_prev": false
+  },
+  "data_quality_warnings": []
+}
+```
+
+#### 2. RFC 7807 Error Response
+`GET /api/v1/meters/UNKNOWN_METER`
+
+```json
+{
+  "type": "https://api.urja-ops.local/errors/not_found",
+  "title": "Resource Not Found",
+  "status": 404,
+  "detail": "Meter 'UNKNOWN_METER' was not found.",
+  "instance": "/api/v1/meters/UNKNOWN_METER",
+  "code": "NOT_FOUND"
+}
+```
+
+---
+
+## Testing & Verification
+
+The test suite covers offline parser verification, upstream failure mocking, spatial queries, and live end-to-end smoke verification:
+
+```bash
+# Run complete offline test suite (21 tests)
+make test
+
+# Run code style and formatting checks
+make lint
+
+# Run live smoke test against live portal (verifies real portal output)
+make test-live
+```
+
+### Test Suite Structure
+- `tests/test_parsers.py`: Unit tests verifying pure parser functions against captured real fixtures (`tests/fixtures/`).
+- `tests/test_hierarchy.py`: Tests tree reconstruction, meter count rollups, and intentional handling of messy hierarchy data.
+- `tests/test_api_mocked.py`: Comprehensive API tests with mocked portal upstream (`respx`):
+  - Session expiration & single-flight re-login.
+  - Upstream 502/504 error mapping.
+  - Spatial radius search and sorting.
+  - Pagination and cross-attribute filtering.
+- `tests/test_openapi.py`: Ensures committed `openapi.json` is never stale or out of sync with the codebase.
+- `tests/test_live_smoke.py`: Live read-only smoke test against the actual portal (guarded by `ENABLE_LIVE_PORTAL_TESTS=true`).
+
+---
+
+## Cache TTL Policy & Staleness Rules
+
+| Resource Type | Cache Location | Default TTL | Staleness / SWR Policy | Justification |
+|---|---|---|---|---|
+| **Meter Metadata & Hierarchy** | SQLite Index | **1 Hour** (3,600s) | Stale-While-Revalidate up to 24 hours (`X-Cache: HIT`, `X-Data-Fetched-At`) | Structural distribution network master data (zones, substations, feeders, transformers) changes infrequently. |
+| **Consumption Telemetry** | In-Memory TTL Cache | **15 Minutes** (900s) | Re-fetched on expiry; cached per `(meter_id, from, to)` window | Upstream telemetry is recorded at 30-minute intervals. A 15-minute TTL guarantees fresh readings at half the collection cadence without query storms. |
+| **Manual Sync Route** | `POST /api/v1/sync` | Cooldown: **60 Seconds** | Returns HTTP 429 if triggered within cooldown period | Protects upstream `/portal/export` from denial-of-service or flooding from repeated client sync requests. |
+| **Portal Session Token** | Memory (`SessionManager`) | **50 Minutes** (buffer before 60m expiry) | Single-flight re-login on 302 redirect or token expiry | Upstream cookie `__Secure-better-auth.session_token` has `Max-Age=3600`. A 50-minute renewal prevents session drops. |
+
+---
+
+## Assumptions & Design Decisions
+
+| Category | Decision / Assumption | Justification |
+|---|---|---|
+| **Bulk Path** | Use HMAC-signed `/portal/export` endpoint discovered in client chunks | Synchronizes all 403 meters in 1 request (~250ms) vs. 21+ sequential paged scrapes. |
+| **Data Repair** | Inferred missing hierarchy codes/names from peer nodes with `data_quality_warnings` | Prevents broken tree visualization while preserving full auditability of upstream anomalies. |
+| **Storage** | SQLite (`aiosqlite`) with bounding-box prefilter | Embedded, zero external dependencies, sub-millisecond query latency for regional utility datasets. |
+| **Concurrency** | Polite client bounded to 2 concurrent in-flight requests | Prevents denial of service or disruption on legacy utility portal. |
+| **Timezone** | All timestamps normalized to IST (UTC+05:30) | Utility is located in Jaipur, Rajasthan. Standardizes telemetry across consumers. |
+
+For detailed protocol analysis and wire specifications, refer to [PROTOCOL.md](PROTOCOL.md).  
+For the committed API contract, see [openapi.json](openapi.json).  
+For the detailed engineering reflection, see [REFLECTION.md](REFLECTION.md).
+
+---
+
+## AI-Use Disclosure
+
+- **Tools Used**: AI assistance was used as a senior pair programmer for rapid code generation, scaffolding Pydantic models, FastAPI routes, and drafting test cases.
+- **Verification**: Every single claim, wire format, and behavior was empirically verified against the live portal, captured into `docs/evidence/`, and covered by passing unit/integration tests.
