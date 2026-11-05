@@ -156,32 +156,89 @@ The service is now running at `http://localhost:8000`:
 {
   "data": [
     {
-      "meter_id": "J100150",
-      "serial_number": "GE98201",
-      "make": "Genus",
-      "phase_type": "single",
+      "meter_id": "J100368",
+      "serial_number": "L&37528",
+      "make": "HPL",
+      "phase_type": "three",
+      "install_status": "Faulty",
+      "install_type": "Whole Current",
+      "build_version": "legacy",
+      "dt_code": "DT-009",
+      "location": {
+        "latitude": 26.916888334176132,
+        "longitude": 75.78477906508856,
+        "distance_km": 0.558
+      },
+      "hierarchy": {
+        "zone": {
+          "code": "Z-03",
+          "name": "Jaipur Zone 3",
+          "raw_code": "Z-03",
+          "raw_name": "Jaipur Zone 3",
+          "is_inferred": false
+        },
+        "feeder": {
+          "code": "F-009",
+          "name": "Feeder 9",
+          "raw_code": "F-009",
+          "raw_name": "Feeder 9",
+          "is_inferred": false
+        },
+        "dt": {
+          "code": "DT-009",
+          "name": "Sikar Road DT 9",
+          "raw_code": "DT-009",
+          "raw_name": "Sikar Road DT 9",
+          "is_inferred": false
+        }
+      },
+      "data_quality_warnings": []
+    },
+    {
+      "meter_id": "J100238",
+      "serial_number": "L&96401",
+      "make": "Secure",
+      "phase_type": "three",
       "install_status": "Installed",
       "install_type": "Whole Current",
       "build_version": "v2",
-      "dt_code": "DT-015",
+      "dt_code": "DT-039",
       "location": {
-        "latitude": 26.9184,
-        "longitude": 75.7921,
-        "distance_km": 0.824
+        "latitude": 26.90296465411559,
+        "longitude": 75.7785314368994,
+        "distance_km": 1.363
       },
       "hierarchy": {
-        "zone": { "code": "Z-01", "name": "Jaipur Zone 1" },
-        "feeder": { "code": "F-015", "name": "Feeder 15" },
-        "dt": { "code": "DT-015", "name": "Bani Park DT 15" }
+        "zone": {
+          "code": "Z-03",
+          "name": "Jaipur Zone 3",
+          "raw_code": "Z-03",
+          "raw_name": "Jaipur Zone 3",
+          "is_inferred": false
+        },
+        "feeder": {
+          "code": "F-011",
+          "name": "Feeder 11",
+          "raw_code": "F-011",
+          "raw_name": "Feeder 11",
+          "is_inferred": false
+        },
+        "dt": {
+          "code": "DT-039",
+          "name": "Sikar Road DT 39",
+          "raw_code": "DT-039",
+          "raw_name": "Sikar Road DT 39",
+          "is_inferred": false
+        }
       },
       "data_quality_warnings": []
     }
   ],
   "pagination": {
-    "total_records": 18,
+    "total_records": 16,
     "page": 1,
     "limit": 2,
-    "total_pages": 9,
+    "total_pages": 8,
     "has_next": true,
     "has_prev": false
   },
