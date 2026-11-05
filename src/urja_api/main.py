@@ -79,7 +79,7 @@ app.include_router(health.router)
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "web", "static")
 if os.path.exists(STATIC_DIR):
 
-    @app.get("/ui", include_in_schema=False)
-    @app.get("/", include_in_schema=False)
+    @app.api_route("/ui", methods=["GET", "HEAD"], include_in_schema=False)
+    @app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
     async def serve_ui():
         return FileResponse(os.path.join(STATIC_DIR, "index.html"))
