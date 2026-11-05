@@ -1,12 +1,13 @@
 import asyncio
 import logging
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from src.urja_api.client.portal_client import UrjaPortalClient
 from src.urja_api.config import settings
 from src.urja_api.errors import RateLimitExceededError, UpstreamPortalError
-from src.urja_api.parsers.meter_parser import parse_meter_from_export
+from src.urja_api.models.meter import MeterSummary
+from src.urja_api.parsers.meter_parser import parse_meter_from_export, parse_meter_from_search
 from src.urja_api.storage.repository import MeterRepository
 
 logger = logging.getLogger("urja_api.sync")
@@ -40,16 +41,23 @@ class SyncService:
                 dts = await self.portal_client.fetch_all_dts()
                 await self.repository.upsert_transformers(dts)
 
-                # 2. Fetch full meters export
-                export_json = await self.portal_client.fetch_meters_bulk()
-                raw_meters = export_json.get("data", [])
-                if not raw_meters:
-                    raise UpstreamPortalError("Bulk export endpoint returned 0 meter records.")
+                # 2. Fetch full meters export, falling back to paged search crawl if export fails
+                try:
+                    export_json = await self.portal_client.fetch_meters_bulk()
+                    raw_meters = export_json.get("data", [])
+                    if not raw_meters:
+                        raise UpstreamPortalError("Bulk export endpoint returned 0 meter records.")
+                    parsed_meters = [parse_meter_from_export(m) for m in raw_meters]
+                except Exception as export_err:
+                    logger.warning(
+                        "Bulk export failed after retry (%s). Falling back to paged crawl via /portal/meters/search...",
+                        export_err,
+                    )
+                    parsed_meters = await self._crawl_paged_meters()
+                    if not parsed_meters:
+                        raise UpstreamPortalError(f"Both bulk export and paged crawl fallback failed: {export_err}")
 
-                # 3. Parse and normalize
-                parsed_meters = [parse_meter_from_export(m) for m in raw_meters]
-
-                # 4. Upsert into SQLite
+                # 3. Upsert into SQLite
                 await self.repository.upsert_meters(parsed_meters)
                 await self.repository.record_sync_metadata("meters_bulk", len(parsed_meters), "success")
 
@@ -75,3 +83,21 @@ class SyncService:
                 logger.error("Bulk synchronization failed: %s", e)
                 await self.repository.record_sync_metadata("meters_bulk", 0, f"error: {str(e)}")
                 raise
+
+    async def _crawl_paged_meters(self) -> List[MeterSummary]:
+        """Fallback crawler: paginates through /portal/meters/search when bulk export is unavailable."""
+        page = 1
+        all_meters = []
+        while True:
+            res = await self.portal_client.search_meters_paged(query="", page=page)
+            data = res.get("data", [])
+            if not data:
+                break
+            for item in data:
+                all_meters.append(parse_meter_from_search(item))
+            total = res.get("total", len(all_meters))
+            page_size = res.get("pageSize", 20)
+            if len(all_meters) >= total or len(data) < page_size:
+                break
+            page += 1
+        return all_meters

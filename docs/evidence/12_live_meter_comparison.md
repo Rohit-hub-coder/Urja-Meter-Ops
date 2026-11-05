@@ -3,7 +3,7 @@
 > **Execution Date**: November 5, 2026  
 > **Target Portal**: `https://urja-ops.flockenergy.tech`  
 > **Verification Method**: Empirical field-by-field comparison between raw legacy portal HTML/JSON endpoints and normalized API responses for 3 sample meters.  
-> **Note**: This comparison compares our API's normalized output against raw legacy portal responses (SSR HTML from `/meters/{id}` and JSON from `/portal/meters/{id}/energy`). A separate visual inspection of the interactive browser UI was performed manually to verify that displayed fields match what a human operator sees.
+> **Note**: This comparison compares our API's normalized output against raw legacy portal responses (SSR HTML from `/meters/{id}` and JSON from `/portal/meters/{id}/energy`).
 
 ---
 

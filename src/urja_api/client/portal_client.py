@@ -121,11 +121,22 @@ class UrjaPortalClient:
             raise UpstreamPortalError(f"Exceeded max retries for {path}.")
 
     async def fetch_meters_bulk(self) -> Dict[str, Any]:
-        """Fetches full meter export via HMAC-signed export route."""
-        ts, sig = await self.session_manager.get_export_signature(self.client, path="/portal/export", query="page=1")
-        headers = {"x-timestamp": ts, "x-signature": sig}
-        res = await self._polite_request("GET", "/portal/export", params={"page": 1}, headers=headers)
-        return res.json()
+        """Fetches full meter export via HMAC-signed export route, with automatic secret invalidation and retry on 401/403."""
+        for attempt in (1, 2):
+            ts, sig = await self.session_manager.get_export_signature(
+                self.client, path="/portal/export", query="page=1"
+            )
+            headers = {"x-timestamp": ts, "x-signature": sig}
+            try:
+                res = await self._polite_request("GET", "/portal/export", params={"page": 1}, headers=headers)
+                return res.json()
+            except UpstreamPortalError as e:
+                if attempt == 1:
+                    logger.warning("Bulk export failed (%s). Invalidating signing secret and retrying once...", e)
+                    await self.session_manager.invalidate_signing_secret()
+                    continue
+                logger.warning("Bulk export failed after secret invalidation retry: %s", e)
+                raise
 
     async def search_meters_paged(self, query: str = "", page: int = 1) -> Dict[str, Any]:
         """Queries portal meter search endpoint."""

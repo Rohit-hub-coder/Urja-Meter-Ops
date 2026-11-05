@@ -1,4 +1,5 @@
 import json
+import time
 
 import httpx
 import pytest
@@ -227,3 +228,106 @@ async def test_upstream_502_error_mapping():
         await p_client.fetch_meter_energy("J100000")
     assert exc_info.value.status_code == 502
     assert "Upstream portal returned HTTP 502" in exc_info.value.detail
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_export_secret_invalidation_and_retry_on_403():
+    """Tests that a 403 on /portal/export invalidates the cached secret and retries once with fresh keys."""
+    from src.urja_api.client.auth import SessionManager
+    from src.urja_api.client.portal_client import UrjaPortalClient
+
+    sm = SessionManager()
+    sm._session_token = "valid_token"
+    sm._token_expires_at = 9999999999.0
+    sm._signing_secret = "stale_secret_123"
+    sm._secret_fetched_at = time.time()
+
+    p_client = UrjaPortalClient(session_manager=sm)
+
+    # First call with stale secret returns 403; second call with fresh secret returns 200
+    route_export = respx.get(f"{settings.portal_base_url}/portal/export")
+    route_export.side_effect = [
+        httpx.Response(403, json={"error": "invalid_signature"}),
+        httpx.Response(200, json={"data": [{"meterId": "J100000", "serialNo": "SE33962"}], "total": 1}),
+    ]
+
+    # Keys endpoint returning fresh secret
+    keys_route = respx.get(f"{settings.portal_base_url}/portal/keys").respond(
+        status_code=200, json={"data": {"signingSecret": "fresh_secret_456"}}
+    )
+
+    data = await p_client.fetch_meters_bulk()
+    assert len(data["data"]) == 1
+    assert data["data"][0]["meterId"] == "J100000"
+    assert keys_route.called
+    assert sm._signing_secret == "fresh_secret_456"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_export_fallback_to_paged_crawl_on_persistent_403(tmp_path, monkeypatch):
+    """Tests that persistent 403/failure on /portal/export falls back to paged search crawl."""
+    from src.urja_api.client.auth import SessionManager
+    from src.urja_api.client.portal_client import UrjaPortalClient
+    from src.urja_api.services.sync_service import SyncService
+
+    # Use fresh db
+    db_file = tmp_path / "test_fallback_sync.db"
+    monkeypatch.setattr(settings, "database_path", str(db_file))
+    await init_database()
+
+    sm = SessionManager()
+    sm._session_token = "valid_token"
+    sm._token_expires_at = 9999999999.0
+    sm._signing_secret = "secret"
+    sm._secret_fetched_at = time.time()
+
+    p_client = UrjaPortalClient(session_manager=sm)
+    repo = MeterRepository()
+    sync_service = SyncService(portal_client=p_client, repository=repo)
+
+    # Keys endpoint
+    respx.get(f"{settings.portal_base_url}/portal/keys").respond(
+        status_code=200, json={"data": {"signingSecret": "fresh_secret"}}
+    )
+
+    # Persistent 403 on export (both attempts fail)
+    respx.get(f"{settings.portal_base_url}/portal/export").respond(status_code=403, json={"error": "forbidden"})
+
+    # DTs endpoint
+    respx.get(f"{settings.portal_base_url}/portal/dts").respond(
+        status_code=200,
+        json={"data": [{"code": "DT-001", "name": "Test DT", "feederCode": "F-001", "capacityKva": 100}]},
+    )
+
+    # Paged search endpoint (fallback)
+    respx.get(f"{settings.portal_base_url}/portal/meters/search").respond(
+        status_code=200,
+        json={
+            "data": [
+                {
+                    "meterId": "J999001",
+                    "serialNo": "GE12345",
+                    "make": "Genus",
+                    "phaseType": "single",
+                    "installStatus": "Installed",
+                    "dtCode": "DT-001",
+                }
+            ],
+            "total": 1,
+            "page": 1,
+            "pageSize": 20,
+        },
+    )
+
+    result = await sync_service.sync_all(force=True)
+    assert result["status"] == "success"
+    assert result["total_meters_synced"] == 1
+    assert result["total_dts_synced"] == 1
+
+    # Verify meter is queried in repo
+    meters, meta = await repo.query_meters()
+    assert meta.total_records == 1
+    assert meters[0].meter_id == "J999001"
+    assert meters[0].make == "Genus"

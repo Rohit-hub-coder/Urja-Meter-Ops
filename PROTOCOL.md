@@ -160,19 +160,23 @@
 * **Limitations [OBSERVED]**: Sub-day ISO timestamps (e.g. `2026-06-25T12:00:00`) are ignored by upstream and return the default full window.
 
 ### 3.5.1 Empirical Telemetry Census (Stratified Sample of 50 Meters)
-An automated rate-limited audit (`scripts/telemetry_census.py`, concurrency 2, delay 250ms) evaluated 50 meters spanning all 30 combinations of 5 manufacturers (`Allied`, `Genus`, `HPL`, `L&T`, `Secure`), 2 phase types (`single`, `three`), and 3 lifecycle states (`Installed`, `Faulty`, `Decommissioned`). Evidence saved to `docs/evidence/13_telemetry_census.md`.
+An automated rate-limited audit (`scripts/telemetry_census.py`, concurrency 2, delay 250ms) evaluated 50 meters chosen via stratified sampling across all 30 permutations of 5 manufacturers (`Allied`, `Genus`, `HPL`, `L&T`, `Secure`), 2 phase types (`single`, `three`), and 3 lifecycle states (`Installed`, `Faulty`, `Decommissioned`). Evidence saved to `docs/evidence/13_telemetry_census.md`.
 
-* **Observed Metrics [OBSERVED]**:
+> **Note on Sampling**: These metrics reflect observations across a non-random stratified sample of 50 meters designed to cover edge combinations; they are **not population-wide proportions**.
+
+* **Observed Sample Metrics [OBSERVED in Sample]**:
   * **Dual Cadence Breakdown**:
-    * **30-Minute Cadence**: 32 of 50 meters (64.0%) report 30-minute block interval telemetry (typically 337 readings across a 7-day span).
-    * **Daily Midnight Snapshot Cadence**: 18 of 50 meters (36.0%) report exactly one reading per day at midnight (`00:00:00`), totaling 8 daily snapshot readings.
-  * **Negative Deltas / Counter Regressions**: Exactly 0 negative deltas observed across all 50 meters. Registers are monotonically non-decreasing.
-  * **Timestamp Continuity**: Exactly 0 timestamp gaps (>1.5× expected cadence) observed.
-  * **Duplicate Timestamps**: Exactly 0 duplicate timestamps observed.
+    * **30-Minute Cadence**: 32 of 50 sampled meters report 30-minute block interval telemetry (typically 337 readings across a 7-day span).
+    * **Daily Midnight Snapshot Cadence**: 18 of 50 sampled meters report exactly one reading per day at midnight (`00:00:00`), totaling 8 daily snapshot readings.
+  * **Negative Deltas / Counter Regressions**: Exactly 0 negative deltas observed across the 50 sampled meters. Registers are monotonically non-decreasing.
+  * **Timestamp Continuity & Duplication**: Exactly 0 timestamp gaps (>1.5× expected cadence) and 0 duplicate timestamps observed.
   * **Decommissioned Meters Telemetry Retention**: 17 of 17 sampled decommissioned meters (100%) still return full historical telemetry on this endpoint.
-* **Domain Hypotheses [ASSUMED]**:
-  * *Daily cadence meters*: Likely represent legacy non-interval commercial/bulk meters or meters configured for daily midnight billing register captures rather than full load profile survey logging.
-  * *Decommissioned meter data retention*: Decommissioning reflects an administrative status flag in the utility's outage/inventory database; meter telemetry is retained in the historical time-series database.
+* **Correlation Analysis for Daily Cadence [OBSERVED]**:
+  * **Build Version Correlation**: Exactly 9 daily meters in the sample are `build_version: "v2"` and 9 are `build_version: "legacy"` (the same ~50/50 split observed in 30-minute meters). There is **no observed correlation** between daily cadence and firmware `build_version`.
+  * **Manufacturer Make**: Daily meters appear across all 5 makes (Allied: 5, Secure: 4, HPL: 4, L&T: 3, Genus: 2).
+  * **Install Status**: 16 of the 18 daily meters (88.9%) are marked `Decommissioned` (10) or `Faulty` (6); only 2 are `Installed`.
+  * *Refuted Domain Hypothesis [ASSUMED -> REFUTED]*: The initial hypothesis that daily-cadence meters represent older hardware or "legacy billing meters" is **not supported by data**, since half of the daily-cadence meters run `build_version: "v2"`. Instead, daily cadence may reflect meters placed into daily-snapshot mode upon entering Faulty/Decommissioned status, or meter profiles with lower reporting tiers.
+  * *Decommissioned meter data retention [ASSUMED]*: Decommissioning reflects an administrative status flag in the utility's outage/inventory database; historical telemetry is retained in the historical time-series database.
 
 ---
 

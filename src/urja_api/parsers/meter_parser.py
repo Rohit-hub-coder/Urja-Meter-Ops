@@ -141,6 +141,37 @@ def parse_meter_from_export(raw: Dict[str, Any]) -> MeterSummary:
     )
 
 
+def parse_meter_from_search(raw: Dict[str, Any]) -> MeterSummary:
+    """Parses lightweight meter record from /portal/meters/search fallback endpoint."""
+    meter_id = str(raw.get("meterId", "")).strip()
+    serial_number = str(raw.get("serialNo", "")).strip()
+    make = str(raw.get("make", "")).strip()
+    dt_code = str(raw.get("dtCode", "")).strip()
+
+    phase_type, phase_warn = parse_phase_type(raw.get("phaseType"))
+    install_status, status_warn = parse_install_status(raw.get("installStatus"))
+
+    warnings: List[DataQualityWarning] = []
+    if phase_warn:
+        warnings.append(phase_warn)
+    if status_warn:
+        warnings.append(status_warn)
+
+    return MeterSummary(
+        meter_id=meter_id,
+        serial_number=serial_number,
+        make=make,
+        phase_type=phase_type,
+        install_status=install_status,
+        install_type=raw.get("installType"),
+        build_version=raw.get("build"),
+        dt_code=dt_code,
+        location=None,
+        hierarchy=None,
+        data_quality_warnings=warnings,
+    )
+
+
 def parse_meter_detail_from_html(html_text: str, meter_id: str) -> MeterDetail:
     """Fallback parser: extracts meter details from legacy server-rendered HTML page."""
     soup = BeautifulSoup(html_text, "html.parser")

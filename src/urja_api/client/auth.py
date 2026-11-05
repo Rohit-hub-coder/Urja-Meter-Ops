@@ -8,7 +8,7 @@ from typing import Optional, Tuple
 import httpx
 
 from src.urja_api.config import settings
-from src.urja_api.errors import UpstreamPortalError
+from src.urja_api.errors import UpstreamPortalError, UpstreamUnavailableError
 
 logger = logging.getLogger("urja_api.auth")
 
@@ -56,6 +56,12 @@ class SessionManager:
             self._session_token = None
             self._token_expires_at = 0.0
 
+    async def invalidate_signing_secret(self):
+        """Forces next export signature generation to fetch fresh signing keys."""
+        async with self._lock:
+            self._signing_secret = None
+            self._secret_fetched_at = 0.0
+
     async def _login(self, client: httpx.AsyncClient):
         if not settings.portal_username or not settings.portal_password:
             raise UpstreamPortalError("Portal credentials not configured in environment.")
@@ -71,9 +77,9 @@ class SessionManager:
 
         try:
             res = await client.post(login_url, data=data, headers=headers, follow_redirects=False)
-        except httpx.RequestError as e:
+        except (httpx.RequestError, httpx.TimeoutException) as e:
             logger.error("Network error during portal login: %s", type(e).__name__)
-            raise UpstreamPortalError(f"Unable to reach portal for authentication: {type(e).__name__}")
+            raise UpstreamUnavailableError(f"Unable to reach portal for authentication: {type(e).__name__}")
 
         if res.status_code == 403:
             raise UpstreamPortalError("Portal rejected login with 403 (Origin/CSRF validation failure).")

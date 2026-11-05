@@ -308,6 +308,8 @@ make test-live
 | Category | Decision / Assumption | Justification |
 |---|---|---|
 | **Bulk Path** | Use HMAC-signed `/portal/export` endpoint discovered in client chunks | Synchronizes all 403 meters in 1 request (~250ms) vs. 21+ sequential paged scrapes. |
+| **Export Resilience** | Secret invalidation retry + automatic fallback to paged search crawl | If `/portal/export` returns 401/403, the client invalidates the cached secret and retries once; if persistent failure occurs, it falls back to paginating `/portal/meters/search`. |
+| **Hierarchy Tiers** | Full 7-tier topology on both list and detail views | Both `MeterSummary` (list) and `MeterDetail` (detail) expose all 7 tiers (`zone`, `circle`, `division`, `subdivision`, `substation`, `feeder`, `dt`). This prevents N+1 queries by allowing API consumers to group, aggregate, or slice search results by substation or feeder without needing individual detail calls. The detail view additionally returns extended `nameplate_attributes`. |
 | **Data Repair** | Inferred missing hierarchy codes/names from peer nodes with `data_quality_warnings` | Prevents broken tree visualization while preserving full auditability of upstream anomalies. |
 | **Storage** | SQLite (`aiosqlite`) with bounding-box prefilter | Embedded, zero external dependencies, sub-millisecond query latency for regional utility datasets. |
 | **Concurrency** | Polite client bounded to 2 concurrent in-flight requests | Prevents denial of service or disruption on legacy utility portal. |

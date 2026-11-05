@@ -7,30 +7,40 @@ Stratification guarantees full coverage across all 30 combinations of:
 - **2 Phase Types**: single, three
 - **3 Install Statuses**: Installed, Faulty, Decommissioned
 
-## 1. High-Level Summary Statistics
+## 1. Summary Statistics from Stratified Sample (50 Meters)
 
-- **Total Meters Sampled**: 50
-- **Cadence: Daily (Midnight)**: 18 meters (36.0%)
-- **Cadence: 30-minute**: 32 meters (64.0%)
-- **Negative Deltas (Counter Resets / Rollovers)**: 0 meters
-- **Timestamp Gaps**: 0 meters
-- **Duplicate Timestamps**: 0 meters
-- **Decommissioned Meters Retaining Telemetry**: 17 / 17 (100%)
+> **Important Note on Sampling**: These metrics reflect observations across a stratified (non-random) sample of 50 meters constructed to cover all 30 permutations of make, phase type, and install status. They are **not population-wide proportions** for the 403-meter population.
+
+- **Sample Size**: 50 meters
+- **Observed Cadence in Sample**:
+  - **Daily (Midnight)**: 18 meters in sample (36.0% of sample)
+  - **30-minute**: 32 meters in sample (64.0% of sample)
+- **Negative Deltas (Counter Resets / Rollovers)**: 0 meters in sample
+- **Timestamp Gaps**: 0 meters in sample
+- **Duplicate Timestamps**: 0 meters in sample
+- **Decommissioned Meters Retaining Telemetry**: 17 / 17 sampled (100% of sampled decommissioned meters)
 
 ## 2. Key Findings & Empirical Observations
 
-1. **Dual Cadence Profiles [OBSERVED]**:
-   - **30-Minute Cadence**: Typical active smart meters report 30-minute block interval telemetry (typically ~337 readings spanning ~7 days).
-   - **Daily Midnight Snapshot Cadence**: A subset of meters report exactly one reading per day at midnight (`00:00:00`), typically ~8 daily readings.
-2. **Negative Deltas / Counter Resets [OBSERVED]**:
-   - Exactly 0 negative deltas observed in the 50-meter sample. Cumulative kWh/kVAh registers are strictly non-decreasing across all observed intervals.
-3. **Timestamp Gaps & Continuity [OBSERVED]**:
-   - Timestamp gaps (>1.5x expected cadence) observed in 0 meters.
-4. **Duplicate Timestamps [OBSERVED]**:
-   - Duplicate timestamps observed: 0. Upstream energy records maintain unique timestamps per meter.
-5. **Decommissioned Meters [OBSERVED]**:
-   - 100% of sampled decommissioned meters still return historical telemetry on `/portal/meters/{id}/energy`.
-   - *Interpretation [ASSUMED]*: Decommissioning is a logical administrative status update in the utility OMS/MDM and does not purge historical meter readings.
+1. **Dual Cadence Profiles [OBSERVED in Sample]**:
+   - **30-Minute Cadence**: 32 meters report 30-minute block interval telemetry (337 readings spanning ~7 days).
+   - **Daily Midnight Snapshot Cadence**: 18 meters report exactly one reading per day at midnight (`00:00:00`), totaling 8 daily readings.
+
+2. **Attribute Correlation Analysis for Daily Cadence [OBSERVED]**:
+   - **Build Version Correlation**: Exactly 9 daily meters are `build_version: "v2"` and 9 are `build_version: "legacy"` (identical 50/50 split to the 30-minute sample which is 53% legacy / 47% v2). There is **no correlation** between daily cadence and `build_version`.
+   - **Manufacturer Make**: Daily meters occur across all 5 manufacturers (Allied: 5, Secure: 4, HPL: 4, L&T: 3, Genus: 2).
+   - **Install Status**: 16 of the 18 daily meters (88.9%) are marked `Decommissioned` (10) or `Faulty` (6); only 2 are `Installed`.
+   - *Refuted Hypothesis [ASSUMED -> REFUTED]*: The initial hypothesis that daily-cadence meters represent older hardware or "legacy billing meters" is **not supported by empirical data**, since half of the daily-cadence meters run firmware `build_version: "v2"`. Instead, daily cadence may reflect meters placed into daily-snapshot mode upon entering Faulty/Decommissioned status, or meter profiles with lower reporting tiers.
+
+3. **Negative Deltas / Counter Resets [OBSERVED in Sample]**:
+   - Exactly 0 negative deltas observed across the 50-meter sample. Cumulative kWh/kVAh registers are strictly non-decreasing across all observed intervals.
+
+4. **Timestamp Continuity & Duplication [OBSERVED in Sample]**:
+   - 0 timestamp gaps (>1.5× expected interval) and 0 duplicate timestamps observed.
+
+5. **Decommissioned Meters [OBSERVED in Sample]**:
+   - 100% of sampled decommissioned meters (17/17) still return historical telemetry on `/portal/meters/{id}/energy`.
+   - *Interpretation [ASSUMED]*: Decommissioning is a logical administrative status update in the utility OMS/MDM and does not purge historical meter readings from the telemetry store.
 
 ## 3. Sample Meter Telemetry Audit Table (50 Meters)
 
