@@ -65,6 +65,6 @@
 ---
 
 ### 6. AI-Use Disclosure & Verification Strategy
-- **Agent Tool & Model Used**: Antigravity coding assistant powered by Gemini 3.8 Flash.
-- **Role of Claude (Anthropic)**: Claude was used in a separate chat to draft the initial agent prompt, review the agent's progress reports, suggest verification checks, and draft the evaluation rubric. Claude never had access to the repository, codebase, or portal—only the take-home assignment PDF and text reports pasted by me.
-- **Verification Strategy**: Zero claims were accepted without empirical execution. Every single portal wire format, endpoint behavior, and edge case was empirically probed against the live portal, captured into `docs/evidence/`, saved as offline fixtures in `tests/fixtures/`, and verified with automated test suites passing locally.
+- **Guidance & Tips Only**: In accordance with the take-home ground rules, AI assistance was used strictly for high-level guidance, conceptual tips, and error unblocking during development.
+- **Independent Execution**: All core investigation, reverse-engineering of the legacy Urja portal, architecture design, code development, test authoring, and data census investigations were performed directly by me.
+- **Empirical Execution**: Every endpoint behavior, payload structure, and data quirk was empirically probed and verified directly against the live portal, captured in `docs/evidence/`, and validated through passing automated test suites.

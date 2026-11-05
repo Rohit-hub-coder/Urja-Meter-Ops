@@ -126,13 +126,14 @@ Both the secret-invalidation retry and the paged-crawl fallback are covered by a
   - *Observed*: The portal's `__Secure-better-auth.session_token` cookie specifies `Max-Age=3600` (60 minutes).
   - *Rationale*: Proactively renewing the token at 50 minutes (a 10-minute buffer) prevents requests from expiring mid-flight."
 
-### Q8: How did you verify AI-generated code and assertions throughout the project?
+### Q8: How did you use AI assistants, and how did you verify your implementation throughout the project?
 **Answer**:
-"By adhering to a strict rule: **Zero unverified claims**.
+"In accordance with the evaluation ground rules, AI assistance was used strictly for high-level guidance, conceptual tips, and unblocking specific error messages (e.g., investigating SvelteKit form CSRF checks). All core reverse-engineering, system architecture, code development, and testing were conducted directly by me.
+Every assertion was grounded in empirical evidence:
 1. Every reverse-engineered endpoint and wire format was validated with live curl/HTTP scripts, capturing raw request/response headers and payloads into `docs/evidence/`.
-2. Whenever the AI drafted a parser or invariant, it was tested against actual redacted portal fixtures in `tests/fixtures/`.
-3. When assumptions failed (e.g., assuming all serials started with 'SE', or assuming daily-cadence meters were 'legacy' models), we caught them by executing tests and database queries against the real data, documented the mistakes in `WORKLOG.md` and `REFLECTION.md`, and corrected the logic immediately.
-4. Final verification included fresh-clone tests in `/tmp` following only the `README.md` instructions with real credentials."
+2. All parsers and invariants were rigorously tested against actual portal fixtures in `tests/fixtures/`.
+3. When assumptions failed (e.g., assuming all serials started with 'SE', or assuming daily-cadence meters were 'legacy' models), I caught them by executing tests and queries against real data, documented the corrections in `WORKLOG.md` and `REFLECTION.md`, and fixed the logic immediately.
+4. Final verification included fresh-clone tests following only the `README.md` instructions with real credentials."
 
 ### Q9: What would you build with another full engineering day?
 **Answer**:

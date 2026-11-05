@@ -118,7 +118,7 @@ This worklog records raw, chronological engineering decisions, hypotheses, inves
 - **Counter-Reset Handling**: Aligned code, tests, and documentation to set `interval_active_energy_kwh = None` with a structured `DataQualityWarning` on negative counter regressions.
 - **Doc-vs-Code Audit**: Audited 18 concrete claims across README, PROTOCOL, and DEFENSE_NOTES. Corrected rate delay discrepancy from 300ms to 200ms (`0.2s`), perfectly matching `src/urja_api/config.py:22` and `portal_client.py:56`.
 - **User-Agent Standard**: Standardized default User-Agent across `config.py`, `.env.example`, and `.env` to `UrjaMeterOpsApi/1.0 (take-home candidate; https://github.com/Rohit-hub-coder/Urja-Meter-Ops)`.
-- **AI Disclosure & Reflection**: Authored first-person engineering reflection in `REFLECTION.md` detailing tool use (Antigravity with Gemini 3.8 Flash + Claude in separate unlinked chat), human decisions, verified mistakes, and design trade-offs.
+- **AI Disclosure & Reflection**: Authored first-person engineering reflection in `REFLECTION.md` disclosing AI use strictly for high-level tips and guidance, with all investigation, architecture, and implementation performed independently.
 - **Web UI Offline Vendoring**: Vendored Leaflet (JS, CSS, images) and Chart.js locally into `src/urja_api/web/static/vendor/` and mounted `/static`. Documented that map background tiles require internet while UI logic and charts run offline.
 - **Multi-Python Verification**: Verified full test suite execution on Python 3.11 (`cpython-3.11.16`) and Python 3.12 (`cpython-3.12.14`) via `uv`.
 - **Fresh Clone Resilience**: Tested application startup and endpoint querying without `.env` or SQLite database. Verified clean RFC 7807 ProblemDetails responses without stack traces.

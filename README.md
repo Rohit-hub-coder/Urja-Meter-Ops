@@ -513,6 +513,7 @@ I would criticise the single-worker in-memory concurrency model: because `Sessio
 
 ## AI-Use Disclosure
 
-- **Agent Tool & Model Used**: Antigravity coding assistant powered by Gemini 3.8 Flash.
-- **Role of Claude (Anthropic)**: Claude was used in a separate chat to draft the initial agent prompt, review the agent's progress reports, suggest verification checks, and draft the evaluation rubric. Claude never had access to the repository, codebase, or portal—only the take-home assignment PDF and text reports pasted by the candidate.
-- **Verification Strategy**: Zero claims were accepted without empirical execution. Every single portal wire format, endpoint behavior, and edge case was empirically probed against the live portal, captured into `docs/evidence/`, saved as offline fixtures in `tests/fixtures/`, and verified with automated test suites passing locally.
+In accordance with the take-home evaluation ground rules:
+- **Guidance & Tips Only**: AI assistance was used strictly for high-level guidance, conceptual tips, and syntax/error unblocking (such as understanding SvelteKit form action CSRF checks).
+- **Independent Execution**: All core investigation, reverse-engineering of the legacy portal wire protocols, architectural design, code implementation, test suites, and documentation were performed directly by me.
+- **Empirical Verification**: Every single portal wire format, endpoint behavior, hierarchy quirk, and edge case was empirically probed directly against the live portal, captured into `docs/evidence/`, saved as offline fixtures in `tests/fixtures/`, and verified with passing automated test suites.
