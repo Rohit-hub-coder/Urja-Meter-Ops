@@ -104,6 +104,11 @@ async def test_get_meter_not_found_rfc7807():
 @pytest.mark.asyncio
 @respx.mock
 async def test_meter_consumption_endpoint():
+    # Mock portal login for fresh sessions
+    respx.post(f"{settings.portal_base_url}/login").respond(
+        status_code=200, headers={"set-cookie": "__Secure-better-auth.session_token=test_token; Path=/"}
+    )
+
     # Mock portal upstream energy endpoint
     with open("tests/fixtures/meter_energy.json") as f:
         energy_fixture = json.load(f)
