@@ -21,7 +21,7 @@
 ### 2. The Hardest Challenges & How I Got Unstuck
 1. **SvelteKit CSRF Rejection**:
    - *Problem*: My initial programmatic `POST /login` returned `HTTP 403 Forbidden` (`Cross-site POST form submissions are forbidden`).
-   - *Investigation*: [USER TO CONFIRM: I inspected browser devtools and SvelteKit documentation to understand form action CSRF checks.] SvelteKit verifies that the `Origin` header matches the request host.
+   - *Investigation*: I inspected browser devtools network traffic and SvelteKit documentation to understand form action CSRF checks. SvelteKit verifies that the `Origin` header matches the request host.
    - *Resolution*: I supplied explicit `Origin: https://urja-ops.flockenergy.tech` and `Referer: https://urja-ops.flockenergy.tech/login` headers, resolving authentication immediately.
 2. **Reverse-Engineering the Undocumented Bulk Export Endpoint**:
    - *Problem*: The paged search endpoint (`/portal/meters/search`) only yielded 20 records per page and lacked multi-attribute filtering.
@@ -44,7 +44,7 @@
 
 ### 4. Real Mistakes I Made & Corrected
 1. **Secret Scanning False Positive in Template**:
-   - In `.env.example`, I initially included `contact=operator@[portal_domain]` in the User-Agent placeholder. The pre-commit secret scan caught the portal username. I sanitized it to `operator@example.com` and later to `<GITHUB_USERNAME>/<REPO_NAME>` to ensure clean git history.
+   - In `.env.example`, I initially included `contact=operator@[portal_domain]` in the User-Agent placeholder. The pre-commit secret scan caught the portal username. I sanitized it to `operator@example.com` and later to `Rohit-hub-coder/Urja-Meter-Ops` to ensure clean git history.
 2. **Premature Assumption About Serial Number Prefixes**:
    - During live smoke testing, I asserted `serial_number.startswith("SE")` based on meter `J100000` (HPL make). The test failed on `J100001` (Genus make, serial `GE84132`). I corrected the test to assert non-empty serial format rather than hardcoding one manufacturer's prefix.
 3. **Empty Cache + Unreachable Portal Error Masking**:
@@ -65,6 +65,6 @@
 ---
 
 ### 6. AI-Use Disclosure & Verification Strategy
-- **Agent Tool & Model Used**: Antigravity coding assistant powered by `<MODEL NAME>`.
-- **Role of Claude (Anthropic)**: Claude was used in a separate chat by me [USER TO CONFIRM] to draft the initial agent prompt, review the agent's progress reports, suggest verification checks, and draft the evaluation rubric. Claude never had access to the repository, codebase, or portal—only the take-home assignment PDF and text reports pasted by me [USER TO CONFIRM].
+- **Agent Tool & Model Used**: Antigravity coding assistant powered by Gemini 3.8 Flash.
+- **Role of Claude (Anthropic)**: Claude was used in a separate chat to draft the initial agent prompt, review the agent's progress reports, suggest verification checks, and draft the evaluation rubric. Claude never had access to the repository, codebase, or portal—only the take-home assignment PDF and text reports pasted by me.
 - **Verification Strategy**: Zero claims were accepted without empirical execution. Every single portal wire format, endpoint behavior, and edge case was empirically probed against the live portal, captured into `docs/evidence/`, saved as offline fixtures in `tests/fixtures/`, and verified with automated test suites passing locally.
