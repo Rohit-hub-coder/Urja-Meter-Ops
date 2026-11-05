@@ -16,6 +16,8 @@ from src.urja_api.storage.repository import MeterRepository
 async def setup_test_db(tmp_path, monkeypatch):
     db_file = tmp_path / "test_api.db"
     monkeypatch.setattr(settings, "database_path", str(db_file))
+    monkeypatch.setattr(settings, "portal_username", "test_operator@example.local")
+    monkeypatch.setattr(settings, "portal_password", "test_mock_password_123")
     await init_database()
 
     # Pre-populate with fixtures
@@ -90,7 +92,13 @@ async def test_get_meter_detail_found():
 
 
 @pytest.mark.asyncio
+@respx.mock
 async def test_get_meter_not_found_rfc7807():
+    respx.post(f"{settings.portal_base_url}/login").respond(
+        status_code=200, headers={"set-cookie": "__Secure-better-auth.session_token=test_token; Path=/"}
+    )
+    respx.get(f"{settings.portal_base_url}/meters/NONEXISTENT_METER_999").respond(status_code=404)
+
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         res = await client.get("/api/v1/meters/NONEXISTENT_METER_999")
